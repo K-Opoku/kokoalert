@@ -1,0 +1,27 @@
+# ── DATA — raw audio stays local ──────────────────────────────────────────
+data/raw/
+
+# ── ENVIRONMENT — never commit secrets ────────────────────────────────────
+.env
+
+# ── PYTHON ────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# ── NOTEBOOKS ─────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── OS ────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── DATABASE — regenerated on deployment ──────────────────────────────────
+data/kokoalert.db
+data/test_kokoalert.dbvenv/
+venv/
+venv/
+venv/
+data/

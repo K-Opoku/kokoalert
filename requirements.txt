@@ -1,0 +1,30 @@
+# ML Core
+tensorflow[and-cuda]==2.17.0
+librosa==0.11.0
+numpy<2.0.0
+scikit-learn>=1.4.0
+
+# Data & Visualization
+pandas>=2.2.0
+matplotlib>=3.8.0
+plotly>=5.18.0
+
+# Backend & API
+streamlit==1.32.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+httpx>=0.26.0
+
+# Scheduler — Farm Monitor Agent (CRITICAL)
+apscheduler==3.10.4
+
+# Image processing — Eye module (CRITICAL)
+Pillow>=10.3.0
+
+# Integration & Utils
+python-dotenv>=1.0.1
+soundfile>=0.12.1
+setuptools
+
+# Testing
+pytest>=8.2.0

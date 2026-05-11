@@ -1,0 +1,12 @@
+{
+  "threshold": 0.74,
+  "percentile": null,
+  "method": "fpr_optimal_val_recall_95",
+  "val_auc": 1.0,
+  "val_sick_recall": 0.99,
+  "val_healthy_recall": 1.0,
+  "val_fpr": 0.0,
+  "bowen_dataset": true,
+  "fmin": 500,
+  "padding": "valid"
+}
