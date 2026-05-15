@@ -28,3 +28,7 @@ setuptools
 
 # Testing
 pytest>=8.2.0
+
+# Frontend  
+python-multipart
+matplotlib
