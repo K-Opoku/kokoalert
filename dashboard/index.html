@@ -4,1145 +4,321 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KokoAlert — Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-  :root {
-    --green:   #2e7d32;
-    --green-bg:#e8f5e9;
-    --amber:   #b45309;
-    --amber-bg:#fffbeb;
-    --red:     #c62828;
-    --red-bg:  #ffebee;
-    --blue:    #1565c0;
-    --blue-bg: #e3f2fd;
-    --text:    #1a1a1a;
-    --text-2:  #555;
-    --text-3:  #888;
-    --border:  #e0e0e0;
-    --bg:      #f5f5f5;
-    --card:    #ffffff;
-    --mono:    'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-         background: var(--bg); color: var(--text); font-size: 14px; }
-
-  /* ── HEADER ── */
-  .header { background: #fff; border-bottom: 1px solid var(--border);
-            padding: 0 20px; display: flex; align-items: center;
-            justify-content: space-between; height: 52px; }
-  .logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
-  .logo-icon { width: 28px; height: 28px; background: var(--green);
-               border-radius: 6px; display: flex; align-items: center;
-               justify-content: center; color: #fff; font-size: 14px; }
-  .live-pill { display: flex; align-items: center; gap: 6px; font-size: 12px;
-               color: var(--green); background: var(--green-bg);
-               padding: 4px 10px; border-radius: 20px; }
-  .live-dot { width: 6px; height: 6px; background: var(--green);
-              border-radius: 50%; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-  /* ── NAV TABS ── */
-  .nav { background: #fff; border-bottom: 1px solid var(--border);
-         padding: 0 20px; display: flex; gap: 0; }
-  .nav-tab { padding: 12px 16px; font-size: 13px; font-weight: 500;
-             color: var(--text-2); border: none; background: none;
-             cursor: pointer; border-bottom: 2px solid transparent;
-             margin-bottom: -1px; transition: color 0.15s; }
-  .nav-tab.active { color: var(--green); border-bottom-color: var(--green); }
-  .nav-tab:hover:not(.active) { color: var(--text); }
-
-  /* ── PAGES ── */
-  .page { display: none; padding: 20px; max-width: 1100px; margin: 0 auto; }
-  .page.active { display: block; }
-
-  /* ── METRIC CARDS ── */
-  .metric-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 16px; }
-  .metric-card { background: var(--card); border: 1px solid var(--border);
-                 border-radius: 10px; padding: 16px; }
-  .metric-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-                  color: var(--text-3); margin-bottom: 8px; }
-  .metric-val { font-size: 26px; font-weight: 600; font-family: var(--mono);
-                line-height: 1; }
-  .metric-sub { font-size: 11px; color: var(--text-3); margin-top: 6px; }
-  .val-green { color: var(--green); }
-  .val-amber { color: var(--amber); }
-  .val-red   { color: var(--red);   }
-
-  /* ── TWO-COL GRID ── */
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
-  .full-col { margin-bottom: 14px; }
-
-  /* ── CARD ── */
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
-  .card-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-                color: var(--text-3); margin-bottom: 12px; font-weight: 500; }
-
-  /* ── ALERT FEED ── */
-  .alert-item { display: flex; gap: 10px; padding: 10px 0;
-                border-bottom: 1px solid var(--border); }
-  .alert-item:last-child { border-bottom: none; }
-  .alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
-  .d-emergency { background: var(--red); }
-  .d-urgent    { background: var(--amber); }
-  .d-monitor   { background: var(--green); }
-  .alert-disease { font-size: 13px; font-weight: 600; }
-  .alert-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
-  .badge { display: inline-block; font-size: 10px; font-weight: 600;
-           padding: 1px 7px; border-radius: 4px; margin-left: 6px;
-           vertical-align: middle; }
-  .b-emergency { background: var(--red-bg);   color: var(--red);   }
-  .b-urgent    { background: var(--amber-bg); color: var(--amber); }
-  .b-monitor   { background: var(--green-bg); color: var(--green); }
-
-  /* ── SEASONAL CHART CONTAINER ── */
-  .chart-wrap { position: relative; height: 210px; }
-
-  /* ── DANGER FARMS ── */
-  .danger-farm { display: flex; align-items: center; justify-content: space-between;
-                 background: var(--amber-bg); border: 1px solid #fde68a;
-                 border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
-  .danger-farm:last-child { margin-bottom: 0; }
-  .df-name { font-size: 13px; font-weight: 600; color: var(--amber); }
-  .df-meta { font-size: 11px; color: var(--amber); opacity: .75; margin-top: 2px; }
-  .df-week { font-size: 12px; font-weight: 700; color: var(--amber);
-             background: #fef3c7; border: 1px solid #fde68a;
-             padding: 2px 8px; border-radius: 6px; }
-
-  /* ── REGION BAR ── */
-  .region-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .region-label { font-size: 12px; width: 100px; flex-shrink: 0; }
-  .region-bar-bg { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
-  .region-bar-fill { height: 100%; background: var(--green); border-radius: 4px; }
-  .region-count { font-size: 12px; font-family: var(--mono); width: 24px; text-align: right;
-                  color: var(--text-2); }
-
-  /* ── PAGE 2: LIVE DIAGNOSIS ── */
-  .diag-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .step-tag { display: inline-flex; align-items: center; justify-content: center;
-              width: 22px; height: 22px; border-radius: 50%; background: var(--blue-bg);
-              color: var(--blue); font-size: 11px; font-weight: 700; flex-shrink: 0; }
-  .step-title { font-size: 14px; font-weight: 600; }
-  .step-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-
-  /* upload zone */
-  .upload-zone { border: 2px dashed var(--border); border-radius: 10px;
-                 padding: 28px 16px; text-align: center; cursor: pointer;
-                 transition: all .2s; background: var(--bg); }
-  .upload-zone:hover { border-color: var(--blue); background: var(--blue-bg); }
-  .upload-zone.has-file { border-color: var(--green); background: var(--green-bg); }
-  .upload-icon { font-size: 28px; margin-bottom: 8px; }
-  .upload-hint { font-size: 12px; color: var(--text-3); margin-top: 6px; }
-
-  /* spectrogram */
-  #spec-canvas { width: 100%; height: 110px; border-radius: 8px; display: block;
-                 background: #0d1117; }
-  .spec-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-  .spec-label { font-size: 11px; color: var(--text-3); }
-  .conf-bar-bg { flex: 1; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
-  .conf-bar-fill { height: 100%; border-radius: 5px; transition: width 1s ease; }
-  .conf-pct { font-size: 13px; font-weight: 700; font-family: var(--mono); width: 44px; text-align: right; }
-
-  /* symptom form */
-  .form-group { margin-bottom: 12px; }
-  .form-label { font-size: 12px; font-weight: 500; color: var(--text-2); margin-bottom: 6px; display: block; }
-  select, input[type=number] { width: 100%; border: 1px solid var(--border);
-    border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: inherit;
-    background: #fff; color: var(--text); }
-  select:focus, input:focus { outline: none; border-color: var(--blue); }
-  .checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .cb-item { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
-  .cb-item input { width: auto; }
-
-  /* analyze btn */
-  .analyze-btn { width: 100%; padding: 11px; background: var(--green); color: #fff;
-                 border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
-                 cursor: pointer; transition: opacity .15s; margin-top: 8px; }
-  .analyze-btn:hover { opacity: .85; }
-  .analyze-btn:disabled { opacity: .5; cursor: not-allowed; }
-
-  /* diagnosis result */
-  #diag-result { display: none; }
-  .diag-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
-                 padding-bottom: 14px; border-bottom: 1px solid var(--border); }
-  .diag-disease { font-size: 18px; font-weight: 700; }
-  .diag-conf { font-size: 12px; color: var(--text-2); }
-  .reason-list { list-style: none; margin: 0 0 14px; }
-  .reason-list li { font-size: 13px; padding: 7px 0 7px 16px; position: relative;
-                    border-bottom: 1px solid var(--border); }
-  .reason-list li:last-child { border-bottom: none; }
-  .reason-list li::before { content: '→'; position: absolute; left: 0; color: var(--text-3); }
-  .drug-box { background: var(--green-bg); border: 1px solid #a5d6a7;
-              border-radius: 8px; padding: 12px 14px; }
-  .drug-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
-                color: var(--green); margin-bottom: 4px; font-weight: 600; }
-  .drug-name { font-size: 13px; font-weight: 600; color: var(--green); }
-  .drug-instr { font-size: 12px; color: var(--green); opacity: .8; margin-top: 3px; }
-  .demo-banner { background: var(--blue-bg); border: 1px solid #90caf9;
-                 border-radius: 6px; padding: 8px 12px; font-size: 12px;
-                 color: var(--blue); margin-bottom: 12px; }
-
-  /* ── PAGE 3: MODEL & DATA ── */
-  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .data-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-                   color: var(--text-3); font-weight: 600; padding: 10px 12px;
-                   text-align: left; border-bottom: 1px solid var(--border); }
-  .data-table td { padding: 12px 12px; border-bottom: 1px solid var(--border);
-                   vertical-align: top; }
-  .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: var(--bg); }
-  .gh-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
-              background: var(--green-bg); color: var(--green); padding: 2px 8px;
-              border-radius: 4px; font-weight: 600; }
-  .partial-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
-                   background: var(--amber-bg); color: var(--amber); padding: 2px 8px;
-                   border-radius: 4px; font-weight: 600; }
-  .no-badge { font-size: 11px; color: var(--text-3); }
-  .metric-pill { display: inline-block; font-size: 12px; font-family: var(--mono);
-                 font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-right: 4px; }
-  .pill-green { background: var(--green-bg); color: var(--green); }
-  .pill-blue  { background: var(--blue-bg);  color: var(--blue);  }
-  .pill-gray  { background: var(--bg);       color: var(--text-2); }
-  .cite { font-size: 11px; color: var(--text-3); font-style: italic; margin-top: 4px; }
-  .model-name { font-weight: 600; font-size: 13px; }
-  .model-desc { font-size: 12px; color: var(--text-2); margin-top: 3px; }
-
-  /* ── PROVENANCE ── */
-  .prov-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: 16px; }
-  .prov-card { background: var(--card); border: 1px solid var(--border);
-               border-radius: 10px; padding: 14px; }
-  .prov-flag { font-size: 20px; margin-bottom: 8px; }
-  .prov-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-  .prov-body  { font-size: 12px; color: var(--text-2); line-height: 1.5; }
-  .prov-cite  { font-size: 11px; color: var(--text-3); margin-top: 8px; font-style: italic; }
-
-  @media (max-width: 640px) {
-    .metric-row  { grid-template-columns: repeat(2,1fr); }
-    .two-col     { grid-template-columns: 1fr; }
-    .diag-layout { grid-template-columns: 1fr; }
-    .prov-grid   { grid-template-columns: 1fr; }
-  }
+:root{--bg:#060d06;--bg2:#0b150b;--bg3:#111a11;--card:#0d180d;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--green:#4ade80;--green2:#22c55e;--gbg:rgba(74,222,128,0.08);--amber:#fbbf24;--abg:rgba(251,191,36,0.08);--red:#f87171;--rbg:rgba(248,113,113,0.08);--blue:#60a5fa;--bbg:rgba(96,165,250,0.08);--text:#ecfdf5;--text2:#c4f0d4;--muted:#8fb8a0;--mono:'JetBrains Mono','Fira Code',monospace;--sans:'Space Grotesk',-apple-system,sans-serif;--r:8px;--r2:12px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.logo{display:flex;align-items:center;gap:12px}
+.lm{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#16a34a,#4ade80);display:flex;align-items:center;justify-content:center;font-size:16px}
+.ln{font-size:17px;font-weight:700;letter-spacing:-.3px}
+.ls{font-size:12px;color:var(--muted);font-weight:400}
+.lpill{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--green);background:var(--gbg);border:1px solid rgba(74,222,128,.2);padding:5px 12px;border-radius:20px;font-weight:500}
+.ld{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:4px}
+.tab{padding:12px 18px;font-size:13px;font-weight:500;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:var(--sans);transition:color .15s}
+.tab.on{color:var(--green);border-bottom-color:var(--green)}
+.tab:hover:not(.on){color:var(--text2)}
+.pg{display:none;padding:24px;max-width:1080px;margin:0 auto}
+.pg.on{display:block}
+.stl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px}
+.mr{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.mc{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:18px 16px;position:relative;overflow:hidden}
+.mc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--r2) var(--r2) 0 0}
+.mc.g::before{background:linear-gradient(90deg,#16a34a,#4ade80)}
+.mc.a::before{background:linear-gradient(90deg,#b45309,#fbbf24)}
+.mc.r::before{background:linear-gradient(90deg,#991b1b,#f87171)}
+.mc.b::before{background:linear-gradient(90deg,#1d4ed8,#60a5fa)}
+.ml{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px}
+.mv{font-size:32px;font-weight:700;font-family:var(--mono);line-height:1;letter-spacing:-1px}
+.ms{font-size:11px;color:var(--muted);margin-top:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:18px}
+.ali{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.ali:last-child{border-bottom:none}
+.abar{width:3px;border-radius:2px;flex-shrink:0;align-self:stretch;min-height:36px}
+.be{background:var(--red)}.bu{background:var(--amber)}.bm{background:var(--green)}
+.adis{font-size:13px;font-weight:600}
+.amet{font-size:11px;color:var(--muted);margin-top:3px}
+.abadge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:4px;margin-left:8px;vertical-align:middle}
+.xe{background:var(--rbg);color:var(--red);border:1px solid rgba(248,113,113,.25)}
+.xu{background:var(--abg);color:var(--amber);border:1px solid rgba(251,191,36,.25)}
+.xm{background:var(--gbg);color:var(--green);border:1px solid rgba(74,222,128,.25)}
+.chw{position:relative;height:200px}
+.df{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.18);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.df:last-child{margin-bottom:0}
+.dfn{font-size:13px;font-weight:600;color:var(--amber)}
+.dfm{font-size:11px;color:rgba(251,191,36,.6);margin-top:2px}
+.wb{font-size:12px;font-weight:700;font-family:var(--mono);color:var(--amber);background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.25);padding:3px 10px;border-radius:6px}
+.rbr{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.rbl{font-size:12px;color:var(--text2);width:100px;flex-shrink:0}
+.rbb{flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.rbf{height:100%;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:3px;transition:width 1s ease}
+.rbn{font-size:12px;font-family:var(--mono);color:var(--muted);width:20px;text-align:right}
+.dl{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.sh{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.sn{width:24px;height:24px;border-radius:50%;background:var(--bbg);border:1px solid rgba(96,165,250,.3);color:var(--blue);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.st{font-size:14px;font-weight:600}
+.uz{border:1.5px dashed rgba(255,255,255,.12);border-radius:var(--r2);padding:24px 16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg3)}
+.uz:hover{border-color:rgba(96,165,250,.4);background:var(--bbg)}
+.uz.ok{border-color:rgba(74,222,128,.4);background:var(--gbg)}
+#sc{width:100%;height:108px;border-radius:var(--r);display:block;background:#050d05}
+.sr{display:flex;align-items:center;gap:10px;margin-top:10px}
+.pbb{flex:1;height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden}
+.pbf{height:100%;border-radius:4px;transition:width 1.2s ease}
+.fg{margin-bottom:12px}
+.fl{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px;display:block}
+select,input[type=number]{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:8px 10px;font-size:13px;font-family:var(--sans);color:var(--text);outline:none}
+select:focus,input:focus{border-color:rgba(96,165,250,.5)}
+select option{background:var(--bg3)}
+.cg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ci{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);cursor:pointer}
+.ci input{width:14px;height:14px;accent-color:var(--green2);cursor:pointer}
+.ab{width:100%;padding:12px;background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;border:none;border-radius:var(--r2);font-size:14px;font-weight:700;font-family:var(--sans);cursor:pointer;transition:opacity .15s;margin-top:10px;letter-spacing:.02em}
+.ab:hover{opacity:.87}
+.ab:disabled{opacity:.35;cursor:not-allowed}
+#dr{display:none}
+.dn{background:var(--bbg);border:1px solid rgba(96,165,250,.25);border-radius:var(--r);padding:9px 13px;font-size:12px;color:var(--blue);margin-bottom:14px}
+.rh{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.rd{font-size:20px;font-weight:700;line-height:1.2}
+.rs{font-size:12px;color:var(--muted);margin-top:5px}
+.ub{font-size:11px;font-weight:700;letter-spacing:.06em;padding:3px 10px;border-radius:5px;display:inline-block;margin-top:8px}
+.sm{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;margin-top:14px}
+.sgs{display:flex;flex-wrap:wrap;gap:6px}
+.sp{font-size:11px;padding:3px 9px;border-radius:5px;font-weight:500}
+.rl{list-style:none}
+.rl li{font-size:12px;color:var(--text2);padding:7px 0 7px 18px;position:relative;border-bottom:1px solid var(--border)}
+.rl li:last-child{border-bottom:none}
+.rl li::before{content:'→';position:absolute;left:0;color:var(--muted)}
+.dbx{border-radius:var(--r);padding:13px;margin-top:12px}
+.dbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.dbn{font-size:14px;font-weight:600;margin-bottom:3px}
+.dbi{font-size:12px;opacity:.75}
+.rph{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:220px;color:var(--muted);text-align:center}
+.dt{width:100%;border-collapse:collapse;font-size:13px}
+.dt th{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+.dt td{padding:13px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+.dt tr:last-child td{border-bottom:none}
+.dt tr:hover td{background:rgba(255,255,255,.015)}
+.mn{font-size:13px;font-weight:600}
+.md{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4}
+.mp{display:inline-block;font-size:11px;font-family:var(--mono);font-weight:600;padding:2px 8px;border-radius:4px;margin:2px 2px 0 0}
+.mpg{background:var(--gbg);color:var(--green);border:1px solid rgba(74,222,128,.25)}
+.mpb{background:var(--bbg);color:var(--blue);border:1px solid rgba(96,165,250,.25)}
+.mpx{background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border)}
+.ghb{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;background:var(--gbg);color:var(--green);border:1px solid rgba(74,222,128,.25)}
+.ptb{background:var(--abg);color:var(--amber);border:1px solid rgba(251,191,36,.25)}
+.ct{font-size:11px;color:var(--muted);font-style:italic;margin-top:5px;line-height:1.4}
+.pg3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+.pc{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:16px}
+.pi{font-size:22px;margin-bottom:10px}
+.pt{font-size:13px;font-weight:600;margin-bottom:5px}
+.pb2{font-size:12px;color:var(--muted);line-height:1.55}
+.pct{font-size:11px;color:rgba(255,255,255,.18);margin-top:8px;font-style:italic;line-height:1.4}
+@media(max-width:640px){.mr{grid-template-columns:1fr 1fr}.two,.dl,.pg3{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 
-<!-- HEADER -->
-<div class="header">
+<div class="hdr">
   <div class="logo">
-    <div class="logo-icon">🐔</div>
-    KokoAlert
-    <span style="font-weight:400;color:var(--text-3);font-size:13px;">Command Center</span>
+    <div class="lm">🐔</div>
+    <div><div class="ln">KokoAlert</div><div class="ls">AI Poultry Disease Surveillance</div></div>
   </div>
-  <div class="live-pill"><div class="live-dot"></div> Live · Ghana</div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <span style="font-size:20px">🇬🇭</span>
+    <div class="lpill"><div class="ld"></div>Live · Ghana</div>
+  </div>
 </div>
 
-<!-- NAV -->
 <div class="nav">
-  <button class="nav-tab active" onclick="switchTab(0)">📊 Command Center</button>
-  <button class="nav-tab" onclick="switchTab(1)">🔬 Live Diagnosis</button>
-  <button class="nav-tab" onclick="switchTab(2)">📋 Model & Data</button>
+  <button class="tab on" onclick="sw(0)">📊 Command Center</button>
+  <button class="tab" onclick="sw(1)">🔬 Live Diagnosis</button>
+  <button class="tab" onclick="sw(2)">📋 Model & Data</button>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     PAGE 1 — COMMAND CENTER
-═══════════════════════════════════════════════════════════════════ -->
-<div class="page active" id="page-0">
-
-  <!-- Metric cards -->
-  <div class="metric-row">
-    <div class="metric-card">
-      <div class="metric-label">Farms Protected</div>
-      <div class="metric-val val-green" id="m-farms">—</div>
-      <div class="metric-sub">Registered in beta</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Birds Monitored</div>
-      <div class="metric-val" id="m-birds">—</div>
-      <div class="metric-sub">Estimated flock total</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Detections This Month</div>
-      <div class="metric-val val-red" id="m-detections">—</div>
-      <div class="metric-sub">Disease alerts fired</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Vaccination Compliance</div>
-      <div class="metric-val val-green" id="m-vacc">—</div>
-      <div class="metric-sub">Fully vaccinated farms</div>
+<!-- PAGE 1 -->
+<div class="pg on" id="p0">
+  <div class="mr">
+    <div class="mc g"><div class="ml">Farms Protected</div><div class="mv" style="color:var(--green)" id="mf">—</div><div class="ms">Beta farms · Ashanti Region</div></div>
+    <div class="mc b"><div class="ml">Birds Monitored</div><div class="mv" style="color:var(--blue)" id="mb">—</div><div class="ms">Estimated flock total</div></div>
+    <div class="mc r"><div class="ml">Detections This Month</div><div class="mv" style="color:var(--red)" id="md">—</div><div class="ms">Disease alerts fired</div></div>
+    <div class="mc a"><div class="ml">Vaccination Compliance</div><div class="mv" style="color:var(--amber)" id="mv">—</div><div class="ms">Fully vaccinated farms</div></div>
+  </div>
+  <div class="two">
+    <div class="card"><div class="stl">🚨 Live Disease Alert Feed</div><div id="feed"><div style="color:var(--muted);font-size:13px">Loading…</div></div></div>
+    <div class="card">
+      <div class="stl">📅 Ghana Seasonal Disease Risk</div>
+      <div class="chw"><canvas id="sc2" role="img" aria-label="Monthly poultry disease risk in Ghana. November highest at 34.27%, March lowest at 22.97%.">Monthly risk data from Mensah et al 2023.</canvas></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">Source: Mensah et al. (2023) · 1,998 cases · KNUST VS Lab, Kumasi</div>
     </div>
   </div>
-
-  <div class="two-col">
-
-    <!-- Alert Feed -->
-    <div class="card">
-      <div class="card-title">🚨 Live Disease Alert Feed</div>
-      <div id="alert-feed">
-        <div style="color:var(--text-3);font-size:13px;">Loading alerts…</div>
-      </div>
-    </div>
-
-    <!-- Seasonal Risk Chart -->
-    <div class="card">
-      <div class="card-title">📅 Ghana Seasonal Disease Risk</div>
-      <div class="chart-wrap">
-        <canvas id="seasonal-chart"></canvas>
-      </div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:8px;">
-        Source: Mensah et al. (2023) · 1,998 cases · KNUST VS Lab, Kumasi
-      </div>
-    </div>
-
+  <div class="two">
+    <div class="card"><div class="stl">⚠️ Gumboro Danger Window (Weeks 3–6)</div><div id="df2"><div style="color:var(--muted);font-size:13px">Checking flock ages…</div></div></div>
+    <div class="card"><div class="stl">🗺️ Farms by Region</div><div id="rb"><div style="color:var(--muted);font-size:13px">Loading…</div></div></div>
   </div>
+</div>
 
-  <div class="two-col">
-
-    <!-- Gumboro Danger Window -->
-    <div class="card">
-      <div class="card-title">⚠️ Gumboro Danger Window (Weeks 3–6)</div>
-      <div id="danger-farms">
-        <div style="color:var(--text-3);font-size:13px;">Checking flock ages…</div>
-      </div>
-    </div>
-
-    <!-- Region Breakdown -->
-    <div class="card">
-      <div class="card-title">🗺️ Farms by Region</div>
-      <div id="region-bars">
-        <div style="color:var(--text-3);font-size:13px;">Loading regions…</div>
-      </div>
-    </div>
-
-  </div>
-
-</div><!-- /page-0 -->
-
-
-<!-- ═══════════════════════════════════════════════════════════════════
-     PAGE 2 — LIVE DIAGNOSIS
-═══════════════════════════════════════════════════════════════════ -->
-<div class="page" id="page-1">
-
-  <div class="diag-layout">
-
-    <!-- LEFT: Input -->
+<!-- PAGE 2 -->
+<div class="pg" id="p1">
+  <div class="dl">
     <div>
-      <!-- Step 1: Audio -->
-      <div class="card" style="margin-bottom:14px;">
-        <div class="step-header">
-          <span class="step-tag">1</span>
-          <span class="step-title">Upload Voice Note</span>
+      <div class="card" style="margin-bottom:14px">
+        <div class="sh"><span class="sn">1</span><span class="st">Upload Voice Note</span></div>
+        <div class="uz" id="az" onclick="document.getElementById('ai').click()">
+          <div style="font-size:26px;margin-bottom:8px">🎙️</div>
+          <div style="font-size:13px;font-weight:500;color:var(--text2)" id="afn">Tap to upload a poultry house recording</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:5px">WAV · MP3 · OGG · 10–30 seconds recommended</div>
         </div>
-        <div class="upload-zone" id="audio-zone" onclick="document.getElementById('audio-input').click()">
-          <div class="upload-icon">🎙️</div>
-          <div style="font-size:13px;font-weight:500;" id="audio-filename">
-            Tap to upload a poultry house recording
+        <input type="file" id="ai" accept="audio/*" style="display:none" onchange="onAud(this)">
+        <div id="sp2" style="display:none;margin-top:12px">
+          <canvas id="sc"></canvas>
+          <div class="sr">
+            <span style="font-size:11px;color:var(--muted);white-space:nowrap">P(sick)</span>
+            <div class="pbb"><div class="pbf" id="pb" style="width:0%"></div></div>
+            <span style="font-size:13px;font-weight:700;font-family:var(--mono);width:40px;text-align:right" id="pp">—</span>
           </div>
-          <div class="upload-hint">WAV · MP3 · OGG · 10–30 seconds recommended</div>
-        </div>
-        <input type="file" id="audio-input" accept="audio/*" style="display:none" onchange="onAudioSelect(this)">
-
-        <!-- Spectrogram — hidden until audio loaded -->
-        <div id="spec-panel" style="display:none;margin-top:12px;">
-          <canvas id="spec-canvas"></canvas>
-          <div class="spec-row">
-            <span class="spec-label">P(sick)</span>
-            <div class="conf-bar-bg">
-              <div class="conf-bar-fill" id="conf-fill" style="width:0%;background:var(--green)"></div>
-            </div>
-            <span class="conf-pct" id="conf-pct">—</span>
-          </div>
-          <div style="font-size:11px;color:var(--text-3);margin-top:6px;" id="window-info"></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px" id="wi"></div>
         </div>
       </div>
-
-      <!-- Step 2: Symptom Form -->
       <div class="card">
-        <div class="step-header">
-          <span class="step-tag">2</span>
-          <span class="step-title">Symptom Form</span>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Flock Age (weeks)</label>
-          <input type="number" id="f-age" min="0" max="100" value="4" placeholder="e.g. 4">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Region</label>
-          <select id="f-region">
-            <option>Ashanti</option><option>Greater Accra</option>
-            <option>Northern</option><option>Eastern</option>
-            <option>Western</option><option>Central</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Droppings Appearance</label>
-          <select id="f-droppings">
-            <option value="normal">Normal (brown or dark)</option>
-            <option value="bloody_chocolate">Bloody or dark chocolate</option>
-            <option value="bright_green">Bright green or yellow-green</option>
-            <option value="white_watery">White and very watery</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Gumboro Vaccination</label>
-          <select id="f-gumboro">
-            <option value="both">Both doses given</option>
-            <option value="first_only">First dose only</option>
-            <option value="none">Not vaccinated</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Newcastle Vaccination</label>
-          <select id="f-newcastle">
-            <option value="full">Full schedule</option>
-            <option value="partial">Partial</option>
-            <option value="none">Not vaccinated</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Behaviour Signs (select all that apply)</label>
-          <div class="checkbox-grid">
-            <label class="cb-item"><input type="checkbox" value="coughing"> Coughing</label>
-            <label class="cb-item"><input type="checkbox" value="sneezing"> Sneezing</label>
-            <label class="cb-item"><input type="checkbox" value="weak"> Weak / lethargic</label>
-            <label class="cb-item"><input type="checkbox" value="huddled"> Huddled together</label>
-            <label class="cb-item"><input type="checkbox" value="reduced_appetite"> Reduced appetite</label>
-            <label class="cb-item"><input type="checkbox" value="sudden_deaths"> Sudden deaths</label>
-            <label class="cb-item"><input type="checkbox" value="face_lesions"> Face lesions</label>
-            <label class="cb-item"><input type="checkbox" value="nasal_discharge"> Nasal discharge</label>
+        <div class="sh"><span class="sn">2</span><span class="st">Symptom Form</span></div>
+        <div class="fg"><label class="fl">Flock Age (weeks)</label><input type="number" id="fa" min="0" max="100" value="4"></div>
+        <div class="fg"><label class="fl">Region</label><select id="fr"><option>Ashanti</option><option>Greater Accra</option><option>Northern</option><option>Eastern</option><option>Western</option><option>Central</option></select></div>
+        <div class="fg"><label class="fl">Droppings Appearance</label><select id="fd"><option value="normal">Normal (brown or dark)</option><option value="bloody_chocolate">Bloody or dark chocolate</option><option value="bright_green">Bright green or yellow-green</option><option value="white_watery">White and very watery</option></select></div>
+        <div class="fg"><label class="fl">Gumboro Vaccination</label><select id="fg2"><option value="both">Both doses given</option><option value="first_only">First dose only</option><option value="none">Not vaccinated</option></select></div>
+        <div class="fg"><label class="fl">Newcastle Vaccination</label><select id="fn"><option value="full">Full schedule</option><option value="partial">Partial</option><option value="none">Not vaccinated</option></select></div>
+        <div class="fg"><label class="fl">Behaviour Signs (select all)</label>
+          <div class="cg">
+            <label class="ci"><input type="checkbox" value="coughing"> Coughing</label>
+            <label class="ci"><input type="checkbox" value="sneezing"> Sneezing</label>
+            <label class="ci"><input type="checkbox" value="weak"> Weak / lethargic</label>
+            <label class="ci"><input type="checkbox" value="huddled"> Huddled together</label>
+            <label class="ci"><input type="checkbox" value="reduced_appetite"> Reduced appetite</label>
+            <label class="ci"><input type="checkbox" value="sudden_deaths"> Sudden deaths</label>
+            <label class="ci"><input type="checkbox" value="face_lesions"> Face lesions</label>
+            <label class="ci"><input type="checkbox" value="nasal_discharge"> Nasal discharge</label>
           </div>
         </div>
-
-        <!-- Step 3: Optional image -->
-        <div class="step-header" style="margin-top:8px;">
-          <span class="step-tag">3</span>
-          <span class="step-title">Droppings Photo <span style="font-weight:400;color:var(--text-3)">(optional)</span></span>
+        <div class="sh" style="margin-top:10px"><span class="sn">3</span><span class="st">Droppings Photo <span style="font-weight:400;color:var(--muted)">(optional)</span></span></div>
+        <div class="uz" id="iz" onclick="document.getElementById('ii').click()" style="padding:14px">
+          <div style="font-size:13px;font-weight:500;color:var(--text2)" id="ifn">📷 Upload droppings photo</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Activates image classifier for higher accuracy</div>
         </div>
-        <div class="upload-zone" id="img-zone" onclick="document.getElementById('img-input').click()"
-             style="padding:14px;">
-          <div style="font-size:13px;" id="img-filename">📷 Tap to upload droppings photo</div>
-          <div class="upload-hint">Helps the image classifier confirm diagnosis</div>
-        </div>
-        <input type="file" id="img-input" accept="image/*" style="display:none" onchange="onImgSelect(this)">
-
-        <button class="analyze-btn" id="analyze-btn" onclick="runDiagnosis()" disabled>
-          Analyze with KokoAlert AI
-        </button>
+        <input type="file" id="ii" accept="image/*" style="display:none" onchange="onImg(this)">
+        <button class="ab" id="abtn" onclick="diagnose()" disabled>Analyze with KokoAlert AI</button>
       </div>
     </div>
-
-    <!-- RIGHT: Results -->
     <div>
-      <div class="card" id="result-card" style="min-height:200px;">
-        <div id="result-placeholder" style="display:flex;flex-direction:column;
-             align-items:center;justify-content:center;min-height:200px;
-             color:var(--text-3);text-align:center;">
-          <div style="font-size:36px;margin-bottom:12px;">🐔</div>
-          <div style="font-size:14px;font-weight:500;margin-bottom:6px;">Diagnosis will appear here</div>
-          <div style="font-size:12px;">Upload a voice note and fill the form,<br>then click Analyze</div>
+      <div class="card" style="min-height:280px">
+        <div id="rph" class="rph">
+          <div style="font-size:40px;margin-bottom:14px;opacity:.4">🐔</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px;color:var(--text2)">Diagnosis will appear here</div>
+          <div style="font-size:12px;color:var(--muted)">Upload a voice note and fill the form,<br>then click Analyze</div>
         </div>
-
-        <div id="diag-result">
-          <div class="demo-banner" id="demo-banner">
-            ℹ️ Demo mode — showing sample output. Deploy API endpoints for live analysis.
+        <div id="dr">
+          <div class="dn" id="dnt">ℹ️ Demo mode — showing sample output. Deploy API for live analysis.</div>
+          <div class="rh"><div class="rd" id="rdis">—</div><div class="rs" id="rsub">—</div><span class="ub" id="rubadge">—</span></div>
+          <div class="sm">Diagnosis Confidence</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <div class="pbb" style="flex:1"><div class="pbf" id="rcf" style="width:0%"></div></div>
+            <span style="font-size:13px;font-weight:700;font-family:var(--mono);width:40px;text-align:right" id="rcp">—</span>
           </div>
-
-          <div class="diag-header">
-            <div>
-              <div class="diag-disease" id="r-disease">—</div>
-              <div class="diag-conf" id="r-conf">—</div>
-            </div>
-            <span class="badge" id="r-urgency-badge">—</span>
-          </div>
-
-          <!-- Confidence visual -->
-          <div style="margin-bottom:14px;">
-            <div style="font-size:11px;color:var(--text-3);margin-bottom:5px;">Diagnosis Confidence</div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <div class="conf-bar-bg" style="flex:1;">
-                <div class="conf-bar-fill" id="r-conf-fill" style="width:0%"></div>
-              </div>
-              <span style="font-size:13px;font-weight:700;font-family:var(--mono);" id="r-conf-pct">—</span>
-            </div>
-          </div>
-
-          <!-- Signals fired -->
-          <div style="margin-bottom:14px;">
-            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;
-                        letter-spacing:.06em;margin-bottom:8px;">Signals That Fired</div>
-            <div id="r-signals" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-          </div>
-
-          <!-- Reasoning -->
-          <div style="margin-bottom:14px;">
-            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;
-                        letter-spacing:.06em;margin-bottom:8px;">Why KokoAlert Flagged This</div>
-            <ul class="reason-list" id="r-reasons"></ul>
-          </div>
-
-          <!-- Drug box -->
-          <div class="drug-box" id="r-drug-box">
-            <div class="drug-label">Agrovet Action</div>
-            <div class="drug-name" id="r-drug">—</div>
-            <div class="drug-instr" id="r-instr">—</div>
+          <div class="sm">Signals That Fired</div>
+          <div class="sgs" id="rsigs"></div>
+          <div class="sm">Why KokoAlert Flagged This</div>
+          <ul class="rl" id="rreas"></ul>
+          <div class="dbx" id="rdb">
+            <div class="dbl" id="rdlbl">Agrovet Action</div>
+            <div class="dbn" id="rdrug">—</div>
+            <div class="dbi" id="rinst">—</div>
           </div>
         </div>
       </div>
     </div>
-
   </div>
-</div><!-- /page-1 -->
+</div>
 
-
-<!-- ═══════════════════════════════════════════════════════════════════
-     PAGE 3 — MODEL & DATA
-═══════════════════════════════════════════════════════════════════ -->
-<div class="page" id="page-2">
-
-  <div class="card" style="margin-bottom:16px;">
-    <div class="card-title">AI Model Performance</div>
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Model</th>
-          <th>Dataset</th>
-          <th>Performance</th>
-          <th>Ghanaian Data?</th>
-        </tr>
-      </thead>
+<!-- PAGE 3 -->
+<div class="pg" id="p2">
+  <div class="card" style="margin-bottom:16px">
+    <div class="stl">AI Model Performance</div>
+    <table class="dt">
+      <thead><tr><th>Model</th><th>Dataset</th><th>Performance</th><th>Ghanaian Data?</th></tr></thead>
       <tbody>
         <tr>
-          <td>
-            <div class="model-name">👂 Audio CNN Classifier</div>
-            <div class="model-desc">Binary classifier · healthy vs sick<br>
-              Conv2D × 3 → GAP → Dense → sigmoid</div>
-          </td>
-          <td>
-            Bowen University Nigeria<br>
-            <span style="font-size:12px;color:var(--text-2);">139 healthy · 121 sick clips</span><br>
-            <span style="font-size:11px;color:var(--text-3);">+ Kofi's farm, Ashanti Region</span>
-          </td>
-          <td>
-            <span class="metric-pill pill-green">AUC 1.00</span>
-            <span class="metric-pill pill-blue">Recall 99%</span>
-            <span class="metric-pill pill-green">FPR 1.4%</span>
-            <div class="cite">Threshold 0.74 · FPR-optimal calibration</div>
-          </td>
-          <td><span class="partial-badge">⚠ Partial</span><br>
-            <span style="font-size:11px;color:var(--text-2);margin-top:4px;display:block;">
-              Pre-trained Nigeria,<br>fine-tuned Ashanti</span></td>
+          <td><div class="mn">👂 Audio CNN Classifier</div><div class="md">Binary classifier · healthy vs sick<br>Conv2D × 3 → GAP → Dense → sigmoid</div></td>
+          <td>Bowen University, Nigeria<br><span style="font-size:12px;color:var(--muted)">139 healthy · 121 sick clips</span><br><span style="font-size:11px;color:rgba(255,255,255,.55)">+ Kofi's farm, Ashanti Region</span></td>
+          <td><span class="mp mpg">AUC 1.00</span><span class="mp mpb">Recall 99%</span><span class="mp mpg">FPR 1.4%</span><div class="ct">Threshold 0.74 · FPR-optimal calibration</div></td>
+          <td><span class="ghb ptb">⚠ Partial</span><div style="font-size:11px;color:var(--muted);margin-top:5px">Pre-trained Nigeria,<br>fine-tuned Ashanti</div></td>
         </tr>
         <tr>
-          <td>
-            <div class="model-name">👁️ Image Classifier</div>
-            <div class="model-desc">MobileNetV2 · 3-class droppings<br>
-              Healthy · Coccidiosis · Newcastle</div>
-          </td>
-          <td>
-            Tanzanian PCR-Verified Dataset<br>
-            <span style="font-size:12px;color:var(--text-2);">Zenodo record 5801834</span><br>
-            <span style="font-size:11px;color:var(--text-3);">34 farms · Arusha & Kilimanjaro</span>
-          </td>
-          <td>
-            <span class="metric-pill pill-green">Acc 91%</span>
-            <span class="metric-pill pill-blue">NCD Recall &gt;80%</span>
-            <div class="cite">NCD class upweighted ×5.5</div>
-          </td>
-          <td><span class="no-badge">❌ No</span><br>
-            <span style="font-size:11px;color:var(--text-3);margin-top:4px;display:block;">
-              East Africa — closest<br>available dataset</span></td>
+          <td><div class="mn">👁️ Image Classifier</div><div class="md">MobileNetV2 · 3-class droppings<br>Healthy · Coccidiosis · Newcastle</div></td>
+          <td>Tanzanian PCR-Verified Dataset<br><span style="font-size:12px;color:var(--muted)">Zenodo record 5801834</span><br><span style="font-size:11px;color:rgba(255,255,255,.55)">34 farms · Arusha & Kilimanjaro</span></td>
+          <td><span class="mp mpg">Acc 91%</span><span class="mp mpb">NCD Recall >80%</span><div class="ct">NCD class upweighted ×5.5</div></td>
+          <td><span style="font-size:11px;color:var(--muted)">❌ No</span><div style="font-size:11px;color:var(--muted);margin-top:5px">East Africa — closest<br>available dataset</div></td>
         </tr>
         <tr>
-          <td>
-            <div class="model-name">📅 Seasonal Risk Engine</div>
-            <div class="model-desc">Rule-based · monthly risk weights<br>
-              Sourced from VS Lab case records</div>
-          </td>
-          <td>
-            KNUST Veterinary Services Lab<br>
-            <span style="font-size:12px;color:var(--text-2);">1,998 cases · 2018–2021</span><br>
-            <span style="font-size:11px;color:var(--text-3);">Kumasi, Ashanti Region</span>
-          </td>
-          <td>
-            <span class="metric-pill pill-gray">Rule-based</span>
-            <div class="cite">No ML training — literature extraction</div>
-          </td>
-          <td><span class="gh-badge">🇬🇭 Primary</span><br>
-            <span style="font-size:11px;color:var(--green);margin-top:4px;display:block;">
-              Direct Ghana data</span></td>
+          <td><div class="mn">📅 Seasonal Risk Engine</div><div class="md">Rule-based · monthly risk weights<br>Literature-extracted</div></td>
+          <td>KNUST Veterinary Services Lab<br><span style="font-size:12px;color:var(--muted)">1,998 cases · 2018–2021</span><br><span style="font-size:11px;color:rgba(255,255,255,.55)">Kumasi, Ashanti Region</span></td>
+          <td><span class="mp mpx">Rule-based</span><div class="ct">No ML — direct literature extraction</div></td>
+          <td><span class="ghb">🇬🇭 Primary</span></td>
         </tr>
         <tr>
-          <td>
-            <div class="model-name">🧠 Diagnosis Engine</div>
-            <div class="model-desc">Rule-based · confidence scoring<br>
-              5 diseases · cascade detection</div>
-          </td>
-          <td>
-            Ayim-Akonor et al. (2020) · 76 farms<br>
-            Ghana VSD Vaccination Schedule<br>
-            <span style="font-size:11px;color:var(--text-3);">KNUST Vet Medicine + farmer interviews</span>
-          </td>
-          <td>
-            <span class="metric-pill pill-gray">Rule-based</span>
-            <div class="cite">Validated against Ghana VSD protocols</div>
-          </td>
-          <td><span class="gh-badge">🇬🇭 Primary</span><br>
-            <span style="font-size:11px;color:var(--green);margin-top:4px;display:block;">
-              Ghana-specific rules</span></td>
+          <td><div class="mn">🧠 Diagnosis Engine</div><div class="md">Rule-based · confidence scoring<br>5 diseases · cascade detection</div></td>
+          <td>Ayim-Akonor et al. (2020) · 76 farms<br>Ghana VSD Vaccination Schedule<br><span style="font-size:11px;color:rgba(255,255,255,.55)">KNUST Vet Medicine + farmer interviews</span></td>
+          <td><span class="mp mpx">Rule-based</span><div class="ct">Validated against Ghana VSD protocols</div></td>
+          <td><span class="ghb">🇬🇭 Primary</span></td>
         </tr>
         <tr>
-          <td>
-            <div class="model-name">🛡️ Biosecurity Scorer</div>
-            <div class="model-desc">Subtractive scoring · 10-point scale<br>
-              Farm-level risk factors</div>
-          </td>
-          <td>
-            Ayim-Akonor et al. (2020)<br>
-            <span style="font-size:12px;color:var(--text-2);">76 Ashanti farms</span><br>
-            <span style="font-size:11px;color:var(--text-3);">Zoonotic risk assessment</span>
-          </td>
-          <td>
-            <span class="metric-pill pill-gray">Rule-based</span>
-            <div class="cite">71.1% farms no footbath · 55.3% on-farm waste</div>
-          </td>
-          <td><span class="gh-badge">🇬🇭 Primary</span></td>
+          <td><div class="mn">🛡️ Biosecurity Scorer</div><div class="md">Subtractive scoring · 10-point scale<br>Farm-level risk factors</div></td>
+          <td>Ayim-Akonor et al. (2020)<br><span style="font-size:12px;color:var(--muted)">76 Ashanti Region farms</span></td>
+          <td><span class="mp mpx">Rule-based</span><div class="ct">71.1% no footbath · 55.3% on-farm waste</div></td>
+          <td><span class="ghb">🇬🇭 Primary</span></td>
         </tr>
       </tbody>
     </table>
   </div>
-
-  <!-- Data Provenance -->
   <div class="card">
-    <div class="card-title">Data Provenance & Citations</div>
-    <div class="prov-grid">
-      <div class="prov-card">
-        <div class="prov-flag">🇬🇭</div>
-        <div class="prov-title">KNUST VS Lab — Primary</div>
-        <div class="prov-body">1,998 respiratory disease cases diagnosed at Kumasi Veterinary Services Laboratory, 2018–2021. Monthly breakdown used for seasonal risk weights. Newcastle = 64.51% of cases.</div>
-        <div class="prov-cite">Mensah et al. (2023). PAMJ-One Health 12:11. DOI: 10.11604/pamj-oh.2023.12.11.40752</div>
-      </div>
-      <div class="prov-card">
-        <div class="prov-flag">🇬🇭</div>
-        <div class="prov-title">Ashanti Farm Survey</div>
-        <div class="prov-body">76 poultry farms in Ashanti Region. Source of biosecurity risk factors: 71.1% no footbath, 55.3% on-farm waste disposal. Used for biosecurity scoring rules.</div>
-        <div class="prov-cite">Ayim-Akonor et al. (2020). Zoonotic disease risks, Ashanti Region. BMC Veterinary Research.</div>
-      </div>
-      <div class="prov-card">
-        <div class="prov-flag">🇬🇭</div>
-        <div class="prov-title">Own-Collected Ghanaian Audio</div>
-        <div class="prov-body">Audio recordings from Kofi's father's farm, Ashanti Region. Used to fine-tune audio classifier for Ghanaian poultry house acoustics. GPS-tagged, date-stamped.</div>
-        <div class="prov-cite">Collected May 2026 · Ashanti Region · Confirmed healthy flock</div>
-      </div>
-      <div class="prov-card">
-        <div class="prov-flag">🇳🇬</div>
-        <div class="prov-title">Bowen University Audio Dataset</div>
-        <div class="prov-body">260 poultry audio clips (139 healthy, 121 sick). Used for primary CNN classifier training. Nigerian data — Ghanaian fine-tuning applied on top.</div>
-        <div class="prov-cite">Bowen University Nigeria · Mendeley Data</div>
-      </div>
-      <div class="prov-card">
-        <div class="prov-flag">🇹🇿</div>
-        <div class="prov-title">Tanzanian Droppings Dataset</div>
-        <div class="prov-body">PCR-verified droppings photos from 34 farms, Arusha and Kilimanjaro regions. 3 classes used (Salmonella excluded). NCD class augmented ×4.</div>
-        <div class="prov-cite">Zenodo record 5801834 · Nelson Mandela AfricanInstitution of Science and Technology</div>
-      </div>
-      <div class="prov-card">
-        <div class="prov-flag">🇬🇭</div>
-        <div class="prov-title">Ghana VSD Vaccination Schedule</div>
-        <div class="prov-body">Official Ghana Veterinary Services Directorate vaccination schedule. Implemented verbatim in the vaccination tracker. Used for compliance scoring and reminder timing.</div>
-        <div class="prov-cite">Ghana VSD + supplementary protocol from Kofi's father's farm, Ashanti</div>
-      </div>
+    <div class="stl">Data Provenance & Citations</div>
+    <div class="pg3">
+      <div class="pc"><div class="pi">🇬🇭</div><div class="pt">KNUST VS Lab — Primary</div><div class="pb2">1,998 respiratory disease cases from Kumasi VS Laboratory, 2018–2021. Monthly breakdown used for seasonal risk weights. Newcastle = 64.51% of cases.</div><div class="pct">Mensah et al. (2023). PAMJ-One Health 12:11. DOI: 10.11604/pamj-oh.2023.12.11.40752</div></div>
+      <div class="pc"><div class="pi">🇬🇭</div><div class="pt">Ashanti Farm Survey</div><div class="pb2">76 poultry farms in Ashanti Region. Source for biosecurity risk factors: 71.1% no footbath, 55.3% on-farm waste disposal. Used for biosecurity scoring rules.</div><div class="pct">Ayim-Akonor et al. (2020). BMC Veterinary Research.</div></div>
+      <div class="pc"><div class="pi">🇬🇭</div><div class="pt">Own-Collected Ghanaian Audio</div><div class="pb2">Audio recordings from Kofi's father's farm, Ashanti Region. Fine-tunes classifier to Ghanaian poultry house acoustics. GPS-tagged, date-stamped.</div><div class="pct">Collected May 2026 · Ashanti Region · Confirmed healthy flock</div></div>
+      <div class="pc"><div class="pi">🇳🇬</div><div class="pt">Bowen University Audio Dataset</div><div class="pb2">260 poultry audio clips (139 healthy, 121 sick). Primary CNN training. Nigerian data — Ghanaian fine-tuning applied on top via transfer learning.</div><div class="pct">Bowen University Nigeria · Mendeley Data</div></div>
+      <div class="pc"><div class="pi">🇹🇿</div><div class="pt">Tanzanian Droppings Dataset</div><div class="pb2">PCR-verified droppings photos, 34 farms, Arusha and Kilimanjaro. 3 classes used (Salmonella excluded). NCD class augmented ×4 to ~1,500 images.</div><div class="pct">Zenodo record 5801834 · Nelson Mandela African Institution of Science and Technology</div></div>
+      <div class="pc"><div class="pi">🇬🇭</div><div class="pt">Ghana VSD Schedule</div><div class="pb2">Official Ghana Veterinary Services Directorate vaccination schedule. Implemented verbatim for compliance scoring and automated WhatsApp reminder timing.</div><div class="pct">Ghana VSD + supplementary protocol, Kofi's father's farm, Ashanti</div></div>
     </div>
   </div>
-
-</div><!-- /page-2 -->
-
+</div>
 
 <script>
-const API = 'https://kokoalert-1.onrender.com/api';
-let audioFile = null;
-let imageFile = null;
-let audioAnalyzed = false;
-
-// ── TAB SWITCHING ──────────────────────────────────────────────────────────
-function switchTab(n) {
-  document.querySelectorAll('.page').forEach((p,i) => p.classList.toggle('active', i===n));
-  document.querySelectorAll('.nav-tab').forEach((t,i) => t.classList.toggle('active', i===n));
-  if (n === 0) loadDashboard();
-}
-
-// ── MOCK DATA (used if API is unavailable) ────────────────────────────────
-const MOCK = {
-  total_farms: 8,
-  total_birds: 5120,
-  detections_this_month: 3,
-  vaccination_compliance_pct: 75,
-  gumboro_danger_count: 2,
-  gumboro_danger_farms: [
-    { name: 'Kwame Asante Farm', age_weeks: 4, region: 'Kumasi Central' },
-    { name: 'Yaw Darko Farm',    age_weeks: 5, region: 'Ashanti New Town' },
-  ],
-  farms_by_region: {
-    'Ashanti': 5, 'Greater Accra': 2, 'Eastern': 1
-  },
-  recent_alerts: [
-    { disease:'newcastle', disease_name:'Newcastle Disease',
-      confidence:'High', urgency:'emergency',
-      farm_name:'Kwame Asante Farm', region:'Kumasi Central',
-      recorded_at:'2026-05-13T06:47:00' },
-    { disease:'crd', disease_name:'Chronic Respiratory Disease (CRD)',
-      confidence:'Medium', urgency:'urgent',
-      farm_name:'Yaw Darko Farm', region:'Ashanti New Town',
-      recorded_at:'2026-05-11T07:12:00' },
-    { disease:'coccidiosis', disease_name:'Coccidiosis',
-      confidence:'High', urgency:'urgent',
-      farm_name:'Abena Mensah Farm', region:'Ejisu',
-      recorded_at:'2026-05-08T08:03:00' },
-  ],
-};
-
-// ── LOAD DASHBOARD ────────────────────────────────────────────────────────
-async function loadDashboard() {
-  let data = MOCK;
-  try {
-    const r = await Promise.race([
-      fetch(`${API}/dashboard/stats`),
-      new Promise((_,rej) => setTimeout(rej, 4000, new Error('timeout')))
-    ]);
-    if (r.ok) data = await r.json();
-  } catch (_) {}
-
-  // Metrics
-  animateCount('m-farms', data.total_farms);
-  animateCount('m-birds', data.total_birds, 1);
-  animateCount('m-detections', data.detections_this_month);
-  document.getElementById('m-vacc').textContent = data.vaccination_compliance_pct + '%';
-
-  // Alert feed
-  const feed = document.getElementById('alert-feed');
-  if (!data.recent_alerts?.length) {
-    feed.innerHTML = '<div style="color:var(--text-3);font-size:13px;">No alerts this month</div>';
-  } else {
-    feed.innerHTML = data.recent_alerts.map(a => {
-      const dt = a.recorded_at ? new Date(a.recorded_at) : null;
-      const time = dt ? dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'}) +
-                         ' · ' + dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '';
-      return `<div class="alert-item">
-        <div class="alert-dot d-${a.urgency}"></div>
-        <div>
-          <div class="alert-disease">
-            ${a.disease_name}
-            <span class="badge b-${a.urgency}">${a.urgency.toUpperCase()}</span>
-          </div>
-          <div class="alert-meta">${a.farm_name} · ${a.region} · ${time}</div>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  // Danger farms
-  const dEl = document.getElementById('danger-farms');
-  if (!data.gumboro_danger_farms?.length) {
-    dEl.innerHTML = '<div style="color:var(--green);font-size:13px;">✓ No farms in the danger window right now</div>';
-  } else {
-    dEl.innerHTML = `<div style="font-size:12px;color:var(--amber);margin-bottom:10px;">
-      ${data.gumboro_danger_count} farm${data.gumboro_danger_count>1?'s':''} at highest risk. 
-      Gumboro kills up to 70% of birds with no cure.
-    </div>` + data.gumboro_danger_farms.map(f => `
-      <div class="danger-farm">
-        <div>
-          <div class="df-name">${f.name}</div>
-          <div class="df-meta">${f.region}</div>
-        </div>
-        <div class="df-week">Week ${f.age_weeks}</div>
-      </div>`).join('');
-  }
-
-  // Regions
-  const rEl = document.getElementById('region-bars');
-  const max = Math.max(...Object.values(data.farms_by_region));
-  rEl.innerHTML = Object.entries(data.farms_by_region)
-    .sort((a,b) => b[1]-a[1])
-    .map(([r,n]) => `
-      <div class="region-row">
-        <div class="region-label">${r}</div>
-        <div class="region-bar-bg">
-          <div class="region-bar-fill" style="width:${Math.round(n/max*100)}%"></div>
-        </div>
-        <div class="region-count">${n}</div>
-      </div>`).join('');
-
-  buildSeasonalChart();
-}
-
-// ── SEASONAL RISK CHART ───────────────────────────────────────────────────
-function buildSeasonalChart() {
-  const ctx = document.getElementById('seasonal-chart').getContext('2d');
-  const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const pcts   = [27.0, 26.0, 22.97, 25.0, 26.0, 27.0, 28.0, 29.0, 31.86, 33.0, 34.27, 32.0];
-  const now = new Date().getMonth();
-
-  const colors = pcts.map((v,i) => {
-    if (i === now) return '#1565c0';
-    if (v >= 33)   return '#c62828';
-    if (v >= 30)   return '#e53935';
-    if (v >= 28)   return '#b45309';
-    return '#388e3c';
-  });
-
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        data: pcts,
-        backgroundColor: colors,
-        borderRadius: 4,
-        borderSkipped: false,
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => ` ${ctx.raw.toFixed(1)}% of annual cases`
-          }
-        }
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-        y: {
-          min: 20, max: 36,
-          ticks: { font: { size: 11 }, callback: v => v + '%' },
-          grid: { color: '#f0f0f0' }
-        }
-      }
-    }
-  });
-}
-
-// ── AUDIO UPLOAD ──────────────────────────────────────────────────────────
-function onAudioSelect(input) {
-  audioFile = input.files[0];
-  if (!audioFile) return;
-  document.getElementById('audio-filename').textContent = '✓ ' + audioFile.name;
-  document.getElementById('audio-zone').classList.add('has-file');
-  processAudio();
-}
-
-async function processAudio() {
-  document.getElementById('spec-panel').style.display = 'block';
-  drawSpectrogram(null); // draw simulated spectrogram immediately
-
-  // Try real API
-  try {
-    const fd = new FormData();
-    fd.append('audio', audioFile);
-    fd.append('flock_age_weeks', document.getElementById('f-age').value);
-    const r = await Promise.race([
-      fetch(`${API}/analyze/audio`, { method:'POST', body:fd }),
-      new Promise((_,rej) => setTimeout(rej, 30000, new Error('timeout')))
-    ]);
-    if (r.ok) {
-      const d = await r.json();
-      if (d.spectrogram_base64) drawSpectrogramFromBase64(d.spectrogram_base64);
-      setConfidence(d.probability, d.is_anomalous);
-      document.getElementById('window-info').textContent =
-        `${d.anomalous_windows} / ${d.total_windows} windows anomalous · ${d.duration_seconds}s recording`;
-      audioAnalyzed = true;
-      updateAnalyzeBtn();
-      return;
-    }
-  } catch (_) {}
-
-  // Fallback: simulated result
-  const fakeProb = 0.87;
-  setConfidence(fakeProb, true);
-  document.getElementById('window-info').textContent = '14 / 16 windows anomalous · 30s recording (demo)';
-  audioAnalyzed = true;
-  updateAnalyzeBtn();
-}
-
-function setConfidence(prob, isAnomalous) {
-  const pct = Math.round(prob * 100);
-  const fill = document.getElementById('conf-fill');
-  const label = document.getElementById('conf-pct');
-  fill.style.width = pct + '%';
-  fill.style.background = isAnomalous ? 'var(--red)' : 'var(--green)';
-  label.textContent = pct + '%';
-  label.style.color = isAnomalous ? 'var(--red)' : 'var(--green)';
-}
-
-// ── SPECTROGRAM CANVAS ────────────────────────────────────────────────────
-function drawSpectrogram(b64) {
-  const c = document.getElementById('spec-canvas');
-  const W = c.offsetWidth || 400, H = 110;
-  c.width = W; c.height = H;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#0d1117';
-  ctx.fillRect(0, 0, W, H);
-
-  // Simulate mel spectrogram
-  const img = ctx.createImageData(W, H);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const freq = 1 - (y / H);
-      let v = Math.random() * 0.3;
-      // Respiratory band (500–3000Hz) has more energy
-      if (freq > 0.3 && freq < 0.75) v += 0.3 + Math.sin(x * 0.1) * 0.2;
-      // Sick pattern: irregular bursts
-      if (Math.sin(x * 0.05) > 0.6 && freq > 0.4) v += 0.4;
-      v = Math.min(1, v);
-      const [r,g,b] = viridis(v);
-      const idx = (y * W + x) * 4;
-      img.data[idx]=r; img.data[idx+1]=g; img.data[idx+2]=b; img.data[idx+3]=255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-
-  // Frequency labels
-  ctx.fillStyle = '#8b949e';
-  ctx.font = '9px monospace';
-  ctx.fillText('8kHz', 4, 12);
-  ctx.fillText('4kHz', 4, H/2);
-  ctx.fillText('500Hz', 4, H-4);
-}
-
-function drawSpectrogramFromBase64(b64) {
-  const c = document.getElementById('spec-canvas');
-  const img = new Image();
-  img.onload = () => {
-    c.width = img.width; c.height = img.height;
-    c.getContext('2d').drawImage(img, 0, 0);
-  };
-  img.src = 'data:image/png;base64,' + b64;
-}
-
-function viridis(t) {
-  // simplified viridis: dark purple → blue → green → yellow
-  const stops = [
-    [68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]
-  ];
-  const idx = t * (stops.length - 1);
-  const lo = Math.floor(idx), hi = Math.ceil(idx);
-  const f = idx - lo;
-  if (hi >= stops.length) return stops[stops.length-1];
-  return stops[lo].map((v,i) => Math.round(v + (stops[hi][i]-v)*f));
-}
-
-// ── IMAGE UPLOAD ──────────────────────────────────────────────────────────
-function onImgSelect(input) {
-  imageFile = input.files[0];
-  if (!imageFile) return;
-  document.getElementById('img-filename').textContent = '✓ ' + imageFile.name;
-  document.getElementById('img-zone').classList.add('has-file');
-}
-
-function updateAnalyzeBtn() {
-  document.getElementById('analyze-btn').disabled = !audioAnalyzed;
-}
-
-// ── RUN DIAGNOSIS ─────────────────────────────────────────────────────────
-async function runDiagnosis() {
-  const btn = document.getElementById('analyze-btn');
-  btn.disabled = true;
-  btn.textContent = 'Analyzing…';
-
-  const behaviors = [...document.querySelectorAll('.checkbox-grid input:checked')]
-    .map(c => c.value);
-
-  const symptoms = {
-    droppings: document.getElementById('f-droppings').value,
-    behavior: behaviors,
-    cocci_medicine_given: false,
-    flock_age_weeks: parseInt(document.getElementById('f-age').value),
-  };
-  const farmProfile = {
-    region: document.getElementById('f-region').value,
-    flock_age_weeks: parseInt(document.getElementById('f-age').value),
-    gumboro_vaccinated: document.getElementById('f-gumboro').value,
-    newcastle_vaccinated: document.getElementById('f-newcastle').value,
-    ventilation: 'medium', bird_type: 'broiler',
-  };
-
-  let result = null;
-  let isDemo = false;
-
-  try {
-    const fd = new FormData();
-    fd.append('audio', audioFile);
-    fd.append('symptoms_json', JSON.stringify(symptoms));
-    fd.append('farm_profile_json', JSON.stringify(farmProfile));
-    if (imageFile) fd.append('image', imageFile);
-    const r = await Promise.race([
-      fetch(`${API}/analyze/full`, {method:'POST', body:fd}),
-      new Promise((_,rej) => setTimeout(rej, 30000, new Error('timeout')))
-    ]);
-    if (r.ok) result = await r.json();
-  } catch (_) {}
-
-  if (!result) {
-    isDemo = true;
-    result = buildDemoResult(symptoms, farmProfile);
-  }
-
-  showResult(result, isDemo);
-  btn.textContent = 'Analyze with KokoAlert AI';
-  btn.disabled = false;
-}
-
-// ── BUILD DEMO RESULT ─────────────────────────────────────────────────────
-function buildDemoResult(symptoms, profile) {
-  const drop = symptoms.droppings;
-  if (drop === 'bright_green') {
-    return {
-      disease: 'newcastle', disease_name: 'Newcastle Disease',
-      confidence: 'High', confidence_score: 0.89, urgency: 'emergency',
-      has_cure: false,
-      reasons: [
-        'Audio classifier: 14/16 windows anomalous (avg P(sick) = 0.87)',
-        'Bright green droppings — primary Newcastle indicator',
-        `Flock age ${profile.flock_age_weeks} weeks — susceptible`,
-        'Seasonal risk: ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][new Date().getMonth()] + ' is medium-risk month',
-        `Newcastle vaccination: ${profile.newcastle_vaccinated === 'full' ? 'Full schedule — immunity may have waned' : 'Incomplete — flock unprotected'}`,
-      ],
-      drug: 'No cure — supportive care only',
-      instruction: 'Electrolytes + Vitamin C in water. Stop selling birds. Bury dead birds. Contact VSD Ashanti: 0322-024567',
-      contact_vsd: true,
-    };
-  }
-  if (drop === 'bloody_chocolate') {
-    return {
-      disease: 'coccidiosis', disease_name: 'Coccidiosis',
-      confidence: 'High', confidence_score: 0.84, urgency: 'urgent',
-      has_cure: true,
-      reasons: [
-        'Audio classifier: 10/16 windows anomalous (avg P(sick) = 0.73)',
-        'Bloody/chocolate droppings — primary Coccidiosis indicator',
-        `Flock age ${profile.flock_age_weeks} weeks — high-risk age`,
-        'No coccidiosis medicine currently given',
-        profile.flock_age_weeks >= 3 && profile.flock_age_weeks <= 6
-          ? '⚠️ Gumboro danger window active — treat Coccidiosis NOW to protect immune system'
-          : 'Treatable if caught early — act today',
-      ],
-      drug: 'Amprolium (Amprocox) or Sulphachlopyrazine (ESB3)',
-      instruction: 'Mix in drinking water for 3–5 days. Add Vitamin K.',
-      contact_vsd: false,
-    };
-  }
-  if (drop === 'white_watery' && profile.flock_age_weeks >= 3 && profile.flock_age_weeks <= 6) {
-    return {
-      disease: 'gumboro', disease_name: 'Gumboro Disease (IBD)',
-      confidence: 'High', confidence_score: 0.91, urgency: 'emergency',
-      has_cure: false,
-      reasons: [
-        `Flock age ${profile.flock_age_weeks} weeks — inside Gumboro danger window (weeks 3–6)`,
-        'White, watery droppings — key Gumboro indicator',
-        `Gumboro vaccination: ${profile.gumboro_vaccinated}`,
-        'Audio anomaly detected across multiple windows',
-        'Gumboro destroys the immune system — secondary infections follow',
-      ],
-      drug: 'No cure — supportive care only',
-      instruction: 'Electrolytes + multivitamins urgently. Keep house warm and dry. Isolate weak birds.',
-      contact_vsd: false,
-    };
-  }
-  // Default: CRD
-  return {
-    disease: 'crd', disease_name: 'Chronic Respiratory Disease (CRD)',
-    confidence: 'Medium', confidence_score: 0.71, urgency: 'urgent',
-    has_cure: true,
-    reasons: [
-      'Audio classifier: 9/16 windows anomalous (avg P(sick) = 0.74)',
-      symptoms.behavior.includes('coughing') ? 'Coughing reported — primary CRD indicator' : 'Respiratory anomaly in audio signal',
-      'Ventilation conditions favour CRD spread',
-      'CRD weakens respiratory tract — opens door to Newcastle',
-    ],
-    drug: 'Tylosin 50 (Tylan Soluble) or Doxycycline',
-    instruction: 'Mix in drinking water for 5 days. Tylosin at 0.5g per litre.',
-    contact_vsd: false,
-  };
-}
-
-// ── SHOW RESULT ───────────────────────────────────────────────────────────
-function showResult(r, isDemo) {
-  document.getElementById('result-placeholder').style.display = 'none';
-  document.getElementById('diag-result').style.display = 'block';
-  document.getElementById('demo-banner').style.display = isDemo ? 'block' : 'none';
-
-  const urgencyColors = {
-    emergency: ['var(--red-bg)', 'var(--red)'],
-    urgent:    ['var(--amber-bg)', 'var(--amber)'],
-    monitor:   ['var(--green-bg)', 'var(--green)'],
-  };
-  const [ubg, ufg] = urgencyColors[r.urgency] || ['#f5f5f5', '#555'];
-
-  document.getElementById('r-disease').textContent = r.disease_name || r.disease;
-  document.getElementById('r-conf').textContent =
-    `${r.confidence} confidence · ${r.has_cure ? 'Treatable' : '⚠ No cure'}`;
-
-  const ub = document.getElementById('r-urgency-badge');
-  ub.textContent = r.urgency.toUpperCase();
-  ub.style.background = ubg; ub.style.color = ufg;
-
-  const score = r.confidence_score || 0.75;
-  const fill2 = document.getElementById('r-conf-fill');
-  fill2.style.width = Math.round(score * 100) + '%';
-  fill2.style.background = score >= 0.85 ? 'var(--green)' : score >= 0.65 ? 'var(--amber)' : 'var(--red)';
-  document.getElementById('r-conf-pct').textContent = Math.round(score * 100) + '%';
-
-  // Signals
-  const signalEl = document.getElementById('r-signals');
-  const signals = [
-    { label: '👂 Audio CNN', color: 'blue' },
-    { label: '📋 Symptoms', color: 'blue' },
-    { label: '🗓️ Flock Age', color: 'blue' },
-    { label: '📅 Season', color: 'blue' },
-  ];
-  if (r.image_result?.image_provided) signals.push({ label: '👁️ Image CNN', color: 'green' });
-  signalEl.innerHTML = signals.map(s =>
-    `<span style="font-size:11px;padding:3px 8px;border-radius:4px;
-     background:var(--${s.color}-bg);color:var(--${s.color})">${s.label}</span>`
-  ).join('');
-
-  // Reasons
-  document.getElementById('r-reasons').innerHTML =
-    (r.reasons || []).map(reason => `<li>${reason}</li>`).join('');
-
-  // Drug
-  const drugBox = document.getElementById('r-drug-box');
-  drugBox.style.background = r.has_cure ? 'var(--green-bg)' : 'var(--red-bg)';
-  drugBox.style.borderColor = r.has_cure ? '#a5d6a7' : '#ef9a9a';
-  document.getElementById('r-drug').style.color = r.has_cure ? 'var(--green)' : 'var(--red)';
-  document.getElementById('r-instr').style.color = r.has_cure ? 'var(--green)' : 'var(--red)';
-  document.getElementById('r-drug').textContent = r.drug || '—';
-  document.getElementById('r-instr').textContent = r.instruction || '';
-
-  if (r.contact_vsd) {
-    document.getElementById('r-drug-box').innerHTML += `
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid #ef9a9a;">
-        <div style="font-size:11px;font-weight:600;color:var(--red);">📞 NOTIFY VSD — Notifiable Disease</div>
-        <div style="font-size:12px;color:var(--red);margin-top:3px;">VSD Ashanti: 0322-024567</div>
-      </div>`;
-  }
-}
-
-// ── ANIMATE COUNTER ────────────────────────────────────────────────────────
-function animateCount(id, target, comma=0) {
-  const el = document.getElementById(id);
-  let start = 0;
-  const step = Math.ceil(target / 40);
-  const t = setInterval(() => {
-    start = Math.min(start + step, target);
-    el.textContent = comma ? start.toLocaleString() : start;
-    if (start >= target) clearInterval(t);
-  }, 30);
-}
-
-// ── INIT ───────────────────────────────────────────────────────────────────
-loadDashboard();
+const API='https://kokoalert-1.onrender.com/api';
+let audF=null,imgF=null,audOk=false;
+function sw(n){document.querySelectorAll('.pg').forEach((p,i)=>p.classList.toggle('on',i===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',i===n));if(n===0)load();}
+const MK={total_farms:8,total_birds:5120,detections_this_month:3,vaccination_compliance_pct:75,gumboro_danger_farms:[{name:'Kwame Asante Farm',age_weeks:4,region:'Kumasi Central'},{name:'Yaw Darko Farm',age_weeks:5,region:'Ashanti New Town'}],farms_by_region:{'Ashanti':5,'Greater Accra':2,'Eastern':1},recent_alerts:[{disease_name:'Newcastle Disease',confidence:'High',urgency:'emergency',farm_name:'Kwame Asante Farm',region:'Kumasi Central',recorded_at:'2026-05-13T06:47:00'},{disease_name:'Chronic Respiratory Disease (CRD)',confidence:'Medium',urgency:'urgent',farm_name:'Yaw Darko Farm',region:'Ashanti New Town',recorded_at:'2026-05-11T07:12:00'},{disease_name:'Coccidiosis',confidence:'High',urgency:'urgent',farm_name:'Abena Mensah Farm',region:'Ejisu',recorded_at:'2026-05-08T08:03:00'}]};
+async function load(){let d=MK;try{const r=await Promise.race([fetch(`${API}/dashboard/stats`),new Promise((_,j)=>setTimeout(j,5000))]);if(r.ok)d=await r.json();}catch(_){}cnt('mf',d.total_farms);cnt('mb',d.total_birds,true);cnt('md',d.detections_this_month);document.getElementById('mv').textContent=d.vaccination_compliance_pct+'%';rFeed(d.recent_alerts||[]);rDanger(d.gumboro_danger_farms||[]);rReg(d.farms_by_region||{});buildCh();}
+function rFeed(a){const el=document.getElementById('feed');if(!a.length){el.innerHTML='<div style="color:var(--muted);font-size:13px">No alerts this month</div>';return;}el.innerHTML=a.map(x=>{const dt=x.recorded_at?new Date(x.recorded_at):null;const t=dt?dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' · '+dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'';const bc=x.urgency==='emergency'?'be':x.urgency==='urgent'?'bu':'bm';const bd=x.urgency==='emergency'?'xe':x.urgency==='urgent'?'xu':'xm';return`<div class="ali"><div class="abar ${bc}"></div><div><div class="adis">${x.disease_name}<span class="abadge ${bd}">${x.urgency.toUpperCase()}</span></div><div class="amet">${x.farm_name} · ${x.region} · ${t}</div></div></div>`;}).join('');}
+function rDanger(f){const el=document.getElementById('df2');if(!f.length){el.innerHTML='<div style="color:var(--green);font-size:13px">✓ No farms in the danger window right now</div>';return;}el.innerHTML=`<div style="font-size:12px;color:var(--amber);margin-bottom:10px">${f.length} farm${f.length>1?'s':''} at highest risk. Gumboro kills up to 70% of birds with no cure.</div>`+f.map(x=>`<div class="df"><div><div class="dfn">${x.name}</div><div class="dfm">${x.region}</div></div><div class="wb">Week ${x.age_weeks}</div></div>`).join('');}
+function rReg(r){const el=document.getElementById('rb');const mx=Math.max(...Object.values(r));el.innerHTML=Object.entries(r).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="rbr"><div class="rbl">${k}</div><div class="rbb"><div class="rbf" style="width:${Math.round(v/mx*100)}%"></div></div><div class="rbn">${v}</div></div>`).join('');}
+function buildCh(){const ctx=document.getElementById('sc2').getContext('2d');const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const pt=[27,26,22.97,25,26,27,28,29,31.86,33,34.27,32];const nw=new Date().getMonth();const cl=pt.map((v,i)=>i===nw?'#3b82f6':v>=33?'#ef4444':v>=30?'#f97316':v>=28?'#eab308':'#22c55e');new Chart(ctx,{type:'bar',data:{labels:mn,datasets:[{data:pt,backgroundColor:cl,borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw.toFixed(1)}% of annual cases`}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#52695a',font:{size:10,family:'Space Grotesk'}}},y:{min:20,max:36,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#52695a',font:{size:10},callback:v=>v+'%'}}}}});}
+function onAud(i){audF=i.files[0];if(!audF)return;document.getElementById('afn').textContent='✓ '+audF.name;document.getElementById('az').classList.add('ok');pAud();}
+async function pAud(){document.getElementById('sp2').style.display='block';drawSpec();try{const fd=new FormData();fd.append('audio',audF);fd.append('flock_age_weeks',document.getElementById('fa').value);const r=await Promise.race([fetch(`${API}/analyze/audio`,{method:'POST',body:fd}),new Promise((_,j)=>setTimeout(j,30000))]);if(r.ok){const d=await r.json();if(d.spectrogram_base64)drawB64(d.spectrogram_base64);setConf(d.probability,d.is_anomalous);document.getElementById('wi').textContent=`${d.anomalous_windows} / ${d.total_windows} windows anomalous · ${d.duration_seconds}s recording`;audOk=true;upBtn();return;}}catch(_){}setConf(0.87,true);document.getElementById('wi').textContent='14 / 16 windows anomalous · 30s recording (demo)';audOk=true;upBtn();}
+function setConf(p,s){const pct=Math.round(p*100);const f=document.getElementById('pb');f.style.width=pct+'%';f.style.background=s?'#ef4444':'#22c55e';const l=document.getElementById('pp');l.textContent=pct+'%';l.style.color=s?'var(--red)':'var(--green)';}
+function drawSpec(){const c=document.getElementById('sc');const W=c.offsetWidth||400,H=108;c.width=W;c.height=H;const ctx=c.getContext('2d');ctx.fillStyle='#050d05';ctx.fillRect(0,0,W,H);const im=ctx.createImageData(W,H);for(let y=0;y<H;y++){for(let x=0;x<W;x++){const fr=1-(y/H);let v=Math.random()*.25;if(fr>.3&&fr<.75)v+=.3+Math.sin(x*.1)*.2;if(Math.sin(x*.05)>.6&&fr>.4)v+=.4;v=Math.min(1,v);const[r,g,b]=vir(v);const i=(y*W+x)*4;im.data[i]=r;im.data[i+1]=g;im.data[i+2]=b;im.data[i+3]=255;}}ctx.putImageData(im,0,0);ctx.fillStyle='rgba(255,255,255,.35)';ctx.font='9px monospace';ctx.fillText('8kHz',3,11);ctx.fillText('4kHz',3,H/2);ctx.fillText('500Hz',3,H-3);}
+function drawB64(b){const c=document.getElementById('sc');const im=new Image();im.onload=()=>{c.width=im.width;c.height=im.height;c.getContext('2d').drawImage(im,0,0);};im.src='data:image/png;base64,'+b;}
+function vir(t){const s=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];const i=t*(s.length-1);const lo=Math.floor(i);const hi=Math.min(Math.ceil(i),s.length-1);const f=i-lo;return s[lo].map((v,j)=>Math.round(v+(s[hi][j]-v)*f));}
+function onImg(i){imgF=i.files[0];if(!imgF)return;document.getElementById('ifn').textContent='✓ '+imgF.name;document.getElementById('iz').classList.add('ok');}
+function upBtn(){document.getElementById('abtn').disabled=!audOk;}
+async function diagnose(){const btn=document.getElementById('abtn');btn.disabled=true;btn.textContent='Analyzing…';const bh=[...document.querySelectorAll('.cg input:checked')].map(c=>c.value);const sy={droppings:document.getElementById('fd').value,behavior:bh,cocci_medicine_given:false,flock_age_weeks:parseInt(document.getElementById('fa').value)};const pr={region:document.getElementById('fr').value,flock_age_weeks:parseInt(document.getElementById('fa').value),gumboro_vaccinated:document.getElementById('fg2').value,newcastle_vaccinated:document.getElementById('fn').value,ventilation:'medium',bird_type:'broiler'};let res=null,demo=false;try{const fd=new FormData();fd.append('audio',audF);fd.append('symptoms_json',JSON.stringify(sy));fd.append('farm_profile_json',JSON.stringify(pr));if(imgF)fd.append('image',imgF);const r=await Promise.race([fetch(`${API}/analyze/full`,{method:'POST',body:fd}),new Promise((_,j)=>setTimeout(j,30000))]);if(r.ok)res=await r.json();}catch(_){}if(!res){demo=true;res=mkD(sy,pr);}showR(res,demo);btn.textContent='Analyze with KokoAlert AI';btn.disabled=false;}
+function mkD(s,p){const d=s.droppings;if(d==='bright_green')return{disease_name:'Newcastle Disease',confidence:'High',confidence_score:.89,urgency:'emergency',has_cure:false,reasons:['Audio classifier: 14/16 windows anomalous (avg P(sick) = 0.87)','Bright green droppings — primary Newcastle indicator','Flock age '+p.flock_age_weeks+' weeks — fully susceptible','Seasonal risk elevated for current month','Newcastle vaccination: '+p.newcastle_vaccinated+' — protection may be incomplete'],drug:'No cure — supportive care only',instruction:'Electrolytes + Vitamin C in water. Stop selling birds. Bury all dead birds immediately. Contact VSD Ashanti: 0322-024567.',contact_vsd:true};if(d==='bloody_chocolate')return{disease_name:'Coccidiosis',confidence:'High',confidence_score:.84,urgency:'urgent',has_cure:true,reasons:['Audio classifier: 10/16 windows anomalous (avg P(sick) = 0.73)','Bloody/chocolate droppings — primary Coccidiosis indicator','Flock age '+p.flock_age_weeks+' weeks — high-risk age bracket','No coccidiosis medication currently given',(p.flock_age_weeks>=3&&p.flock_age_weeks<=6)?'⚠️ Gumboro window active — treat Coccidiosis NOW to protect immune system':'Treatable if caught early — act today'],drug:'Amprolium (Amprocox) or Sulphachlopyrazine (ESB3)',instruction:'Mix in drinking water for 3–5 days. Add Vitamin K.',contact_vsd:false};if(d==='white_watery'&&p.flock_age_weeks>=3&&p.flock_age_weeks<=6)return{disease_name:'Gumboro Disease (IBD)',confidence:'High',confidence_score:.91,urgency:'emergency',has_cure:false,reasons:['Flock age '+p.flock_age_weeks+' weeks — inside Gumboro danger window (weeks 3–6)','White, watery droppings — key Gumboro indicator','Gumboro vaccination: '+p.gumboro_vaccinated,'Audio anomaly across multiple windows','Gumboro destroys immune system — secondary infections follow'],drug:'No cure — supportive care only',instruction:'Electrolytes + multivitamins urgently. Keep house warm and dry. Isolate weak birds.',contact_vsd:false};return{disease_name:'Chronic Respiratory Disease (CRD)',confidence:'Medium',confidence_score:.71,urgency:'urgent',has_cure:true,reasons:['Audio classifier: 9/16 windows anomalous (avg P(sick) = 0.74)',s.behavior.includes('coughing')?'Coughing reported — primary CRD indicator':'Respiratory anomaly detected in audio signal','Ventilation conditions favour CRD spread','CRD weakens respiratory tract — opens door to Newcastle'],drug:'Tylosin 50 (Tylan Soluble) or Doxycycline',instruction:'Mix in drinking water for 5 days. Tylosin at 0.5g per litre.',contact_vsd:false};}
+function showR(r,demo){document.getElementById('rph').style.display='none';document.getElementById('dr').style.display='block';document.getElementById('dnt').style.display=demo?'block':'none';document.getElementById('rdis').textContent=r.disease_name||'Unknown';document.getElementById('rsub').textContent=(r.confidence||'Medium')+' confidence · '+(r.has_cure?'Treatable':'⚠ No cure — supportive care only');const ub=document.getElementById('rubadge');const uc={emergency:['var(--rbg)','var(--red)','rgba(248,113,113,.3)'],urgent:['var(--abg)','var(--amber)','rgba(251,191,36,.3)'],monitor:['var(--gbg)','var(--green)','rgba(74,222,128,.3)']};const[bg,fg,bd]=uc[r.urgency]||uc.monitor;ub.textContent=r.urgency.toUpperCase();ub.style.background=bg;ub.style.color=fg;ub.style.border=`1px solid ${bd}`;const sc=r.confidence_score||.75;const sp=Math.round(sc*100);const cf=document.getElementById('rcf');cf.style.width=sp+'%';cf.style.background=sc>=.85?'#22c55e':sc>=.65?'#fbbf24':'#f87171';document.getElementById('rcp').textContent=sp+'%';const sigs=[{l:'👂 Audio CNN',c:'blue'},{l:'📋 Symptoms',c:'blue'},{l:'🗓️ Flock Age',c:'blue'},{l:'📅 Season',c:'blue'}];if(r.image_result?.image_provided)sigs.push({l:'👁️ Image CNN',c:'green'});document.getElementById('rsigs').innerHTML=sigs.map(s=>`<span class="sp" style="background:var(--${s.c==='blue'?'b':'g'}bg);color:var(--${s.c});border:1px solid rgba(${s.c==='blue'?'96,165,250':'74,222,128'},.2)">${s.l}</span>`).join('');document.getElementById('rreas').innerHTML=(r.reasons||[]).map(x=>`<li>${x}</li>`).join('');const db=document.getElementById('rdb');const tr=r.has_cure;db.style.background=tr?'rgba(74,222,128,.07)':'rgba(248,113,113,.07)';db.style.border=`1px solid ${tr?'rgba(74,222,128,.2)':'rgba(248,113,113,.2)'}`;document.getElementById('rdlbl').style.color=tr?'var(--green)':'var(--red)';document.getElementById('rdrug').style.color=tr?'var(--green)':'var(--red)';document.getElementById('rinst').style.color=tr?'rgba(74,222,128,.7)':'rgba(248,113,113,.7)';document.getElementById('rdrug').textContent=r.drug||'—';document.getElementById('rinst').textContent=r.instruction||'';if(r.contact_vsd){const ex=document.createElement('div');ex.style.cssText='margin-top:10px;padding-top:10px;border-top:1px solid rgba(248,113,113,.2)';ex.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--red);letter-spacing:.05em">NOTIFY VSD — NOTIFIABLE DISEASE</div><div style="font-size:12px;color:var(--red);margin-top:3px;opacity:.8">VSD Ashanti Regional Office: 0322-024567</div>';db.appendChild(ex);}}
+function cnt(id,tg,comma=false){const el=document.getElementById(id);let n=0;const st=Math.ceil(tg/40);const t=setInterval(()=>{n=Math.min(n+st,tg);el.textContent=comma?n.toLocaleString():n;if(n>=tg)clearInterval(t);},25);}
+load();
 </script>
 </body>
 </html>
