@@ -41,7 +41,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
-
+from whatsapp_bot.handlers import handle_incoming_message
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
