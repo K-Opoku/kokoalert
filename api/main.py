@@ -46,6 +46,9 @@ import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from api.dashboard_routes import router as dashboard_router
 
 from api.database import (
     init_db,
@@ -61,14 +64,7 @@ from src.vaccination_scheduler import (
     get_flock_age_weeks,
     get_flock_age_days,
 )
-from src.risk_engine import compute_farm_risk_score
-from src.config import WHATSAPP_VERIFY_TOKEN, MONTHLY_RISK_DATA
-from whatsapp_bot.handlers import (
-    handle_incoming_message,
-    send_whatsapp_message,
-    send_daily_checkin,
-    send_weekly_health_check,
-)
+
 
 # ── LOGGING ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -123,6 +119,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(dashboard_router)
+app.mount("/dashboard", StaticFiles(directory="dashboard", html=True), name="dashboard")
 
 # ── WHATSAPP WEBHOOK ──────────────────────────────────────────────────────────
 
