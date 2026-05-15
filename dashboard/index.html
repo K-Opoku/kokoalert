@@ -843,7 +843,7 @@ async function processAudio() {
     fd.append('flock_age_weeks', document.getElementById('f-age').value);
     const r = await Promise.race([
       fetch(`${API}/analyze/audio`, { method:'POST', body:fd }),
-      new Promise((_,rej) => setTimeout(rej, 10000, new Error('timeout')))
+      new Promise((_,rej) => setTimeout(rej, 30000, new Error('timeout')))
     ]);
     if (r.ok) {
       const d = await r.json();
@@ -978,7 +978,7 @@ async function runDiagnosis() {
     if (imageFile) fd.append('image', imageFile);
     const r = await Promise.race([
       fetch(`${API}/analyze/full`, {method:'POST', body:fd}),
-      new Promise((_,rej) => setTimeout(rej, 15000, new Error('timeout')))
+      new Promise((_,rej) => setTimeout(rej, 30000, new Error('timeout')))
     ]);
     if (r.ok) result = await r.json();
   } catch (_) {}
