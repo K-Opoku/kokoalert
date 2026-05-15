@@ -65,7 +65,6 @@ from src.config import (
 # ── SEND MESSAGE ──────────────────────────────────────────────────────────────
 
 async def send_whatsapp_message(phone: str, message: str):
-    """Send a plain text WhatsApp message."""
     headers = {
         "Authorization": f"Bearer {WHATSAPP_API_TOKEN}",
         "Content-Type": "application/json",
@@ -77,7 +76,8 @@ async def send_whatsapp_message(phone: str, message: str):
         "text": {"body": message},
     }
     async with httpx.AsyncClient() as client:
-        await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
+        response = await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
+        print(f"[WHATSAPP] {response.status_code} → {response.text}")  # ADD THIS
 
 
 # ── DROPPINGS QUESTION ────────────────────────────────────────────────────────
