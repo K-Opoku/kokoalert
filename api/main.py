@@ -49,7 +49,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from api.dashboard_routes import router as dashboard_router
-
+from src.config import WHATSAPP_VERIFY_TOKEN, MONTHLY_RISK_DATA
 from api.database import (
     init_db,
     get_all_active_farmers,
