@@ -2,42 +2,12 @@
 whatsapp_bot/handlers.py
 ─────────────────────────────────────────────────────────────────────────────
 WhatsApp message routing and response logic.
-
-Flow overview:
-  New farmer arrives
-    → Onboarding (7 questions → farm profile)
-    → Daily check-in every morning
-    → Vaccination reminders at the right time
-
-  Returning farmer sends voice note
-    → Audio analysed by CNN classifier
-    → If anomalous → ask about droppings
-    → Droppings + audio + age + profile → confirmed diagnosis
-    → Specific agrovet or VSD guidance sent back
-
-  Returning farmer sends text
-    → Numbered replies route to correct handler
-    → Commands: RISK, VACC, BIOSEC, HELP, DOC
-
-Diagnosis flow:
-  1. Farmer sends voice note
-  2. Classifier detects anomaly → ask droppings question
-  3. Farmer replies with droppings number
-  4. DiagnosisEngine runs with audio + droppings + profile
-  5. Confirmed diagnosis sent with reasons + agrovet drug name
-
-State machine (stored per phone in DB):
-  None                  → normal command handling
-  onboarding_{n}        → mid-onboarding question n
-  weekly_{n}            → mid-weekly health check question n
-  awaiting_droppings    → audio was anomalous, waiting for droppings reply
-  awaiting_death_count  → reported deaths, waiting for number
-  awaiting_doc_date     → waiting for new flock arrival date
 """
 
 import httpx
 import tempfile
 import os
+import asyncio
 from datetime import datetime, date
 
 from src.pipeline import pipeline
@@ -77,12 +47,11 @@ async def send_whatsapp_message(phone: str, message: str):
     }
     async with httpx.AsyncClient() as client:
         response = await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
-        print(f"[WHATSAPP] {response.status_code} → {response.text}")  # ADD THIS
+        if response.status_code != 200:
+            print(f"[WHATSAPP ERROR] {response.status_code} → {response.text}")
 
 
 # ── DROPPINGS QUESTION ────────────────────────────────────────────────────────
-# Sent immediately after an audio anomaly is detected.
-# Farmer's reply feeds into the diagnosis engine.
 
 DROPPINGS_QUESTION = (
     "🔍 *KokoAlert detected something in your flock audio.*\n\n"
@@ -101,7 +70,7 @@ DROPPINGS_MAP = {
     "2": "bloody_chocolate",
     "3": "bright_green",
     "4": "white_watery",
-    "5": None,  # Haven't checked — give partial diagnosis
+    "5": "normal",
 }
 
 BEHAVIOR_QUESTION = (
@@ -146,7 +115,6 @@ async def handle_incoming_message(webhook_data: dict):
             text = message.get("text", {}).get("body", "").strip()
             text_upper = text.upper()
 
-            # ── State machine routing ─────────────────────────────────────
             if state and state.startswith("onboarding_"):
                 idx = int(state.replace("onboarding_", ""))
                 await handle_onboarding_reply(phone, text, idx)
@@ -156,16 +124,6 @@ async def handle_incoming_message(webhook_data: dict):
 
             elif state == "awaiting_behavior":
                 await handle_behavior_reply(phone, text)
-                
-            elif state == "awaiting_image":
-                if msg_type == "image":
-                    image_id = message.get("image", {}).get("id")
-                    await handle_image_message(phone, image_id)
-                elif text_upper == "SKIP":
-                    await run_diagnosis_and_send(phone, image_result=None)
-                else:
-                    # Any text = skip
-                    await run_diagnosis_and_send(phone, image_result=None)
 
             elif state and state.startswith("weekly_"):
                 idx = int(state.replace("weekly_", ""))
@@ -177,7 +135,6 @@ async def handle_incoming_message(webhook_data: dict):
             elif state == "awaiting_doc_date":
                 await handle_doc_date_reply(phone, text)
 
-            # ── Fresh message routing ────────────────────────────────────
             elif text_upper in ["HI", "HELLO", "START", "KOKOALERT"]:
                 profile = get_farm_profile(phone)
                 if not profile:
@@ -195,6 +152,7 @@ async def handle_incoming_message(webhook_data: dict):
         return {"status": "processed"}
 
     except Exception as e:
+        print(f"[ERROR] handle_incoming_message: {e}")
         return {"status": "error", "message": str(e)}
 
 
@@ -218,10 +176,10 @@ async def handle_onboarding_reply(phone: str, reply: str, question_index: int):
     profile = get_farm_profile(phone) or {}
     answer = options[reply]
 
-    # doc_arrival_date: convert the estimated age in days to an actual date
     if question["key"] == "doc_arrival_date":
-        arrival_days_ago = answer  # e.g. 21 = 3 weeks ago
-        arrival_date = (date.today() - __import__('datetime').timedelta(days=arrival_days_ago)).isoformat()
+        arrival_days_ago = answer
+        from datetime import timedelta
+        arrival_date = (date.today() - timedelta(days=arrival_days_ago)).isoformat()
         profile["doc_arrival_date"] = arrival_date
         profile["flock_age_weeks"] = arrival_days_ago // 7
     else:
@@ -240,7 +198,6 @@ async def handle_onboarding_reply(phone: str, reply: str, question_index: int):
 
 
 async def send_onboarding_complete(phone: str, profile: dict):
-    """Send setup complete message with first vaccination reminder."""
     flock_age_weeks = profile.get("flock_age_weeks", 0)
     vacc_log = get_vaccination_log(phone) or {}
     reminders = get_todays_reminders(profile, vacc_log)
@@ -274,8 +231,8 @@ async def send_onboarding_complete(phone: str, profile: dict):
 
 async def handle_audio_message(phone: str, audio_id: str):
     """
-    Download voice note → run CNN classifier → if anomalous, ask about droppings.
-    The full diagnosis is only given AFTER droppings are confirmed.
+    Download voice note → run CNN classifier in background thread
+    so the server stays responsive during analysis.
     """
     await send_whatsapp_message(phone,
         "🧠 *Analysing your flock...* About 10 seconds."
@@ -301,14 +258,15 @@ async def handle_audio_message(phone: str, audio_id: str):
         if not pipeline._loaded:
             pipeline.load_models()
 
-        # Run with no symptoms first — just audio
-        result = pipeline.analyse_audio(
-            audio_file_path=tmp_path,
-            farm_profile=farm_profile,
-            symptoms={},
+        # ── FIX: Run blocking pipeline in thread executor ──────────────────
+        # This keeps the server responsive while the CNN processes audio.
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: pipeline.analyse_audio(tmp_path, farm_profile, {})
         )
-        os.unlink(tmp_path)
 
+        os.unlink(tmp_path)
         save_analysis_result(phone, result)
 
         status = result.get("status")
@@ -320,19 +278,17 @@ async def handle_audio_message(phone: str, audio_id: str):
             await send_whatsapp_message(phone, result["whatsapp_message"])
 
         elif status in ["diagnosed", "needs_symptoms"]:
-            # Store the audio result temporarily so we can use it after droppings reply
             farm_profile["_pending_audio_result"] = result.get("audio", {})
             save_farm_profile(phone, farm_profile)
 
             if status == "needs_symptoms":
-                # Audio anomalous — ask about droppings before giving diagnosis
                 set_onboarding_state(phone, "awaiting_droppings")
                 await send_whatsapp_message(phone, DROPPINGS_QUESTION)
             else:
-                # Engine already has enough to diagnose (strong signal)
                 await send_whatsapp_message(phone, result["whatsapp_message"])
 
     except Exception as e:
+        print(f"[ERROR] handle_audio_message: {e}")
         await send_whatsapp_message(phone,
             "❌ Something went wrong analysing your recording.\n\n"
             "Please try again, or type *HELP* for emergency vet contacts."
@@ -342,10 +298,6 @@ async def handle_audio_message(phone: str, audio_id: str):
 # ── DROPPINGS + BEHAVIOR FOLLOW-UP ───────────────────────────────────────────
 
 async def handle_droppings_reply(phone: str, reply: str):
-    """
-    Farmer replied with droppings colour after audio anomaly.
-    Store the answer and ask one more question about behaviour.
-    """
     if reply not in DROPPINGS_MAP:
         await send_whatsapp_message(phone,
             f"Please reply with a number 1 to 5.\n\n{DROPPINGS_QUESTION}"
@@ -356,7 +308,6 @@ async def handle_droppings_reply(phone: str, reply: str):
     profile["_pending_droppings"] = DROPPINGS_MAP[reply]
     save_farm_profile(phone, profile)
 
-    # Ask about behaviour before running full diagnosis
     set_onboarding_state(phone, "awaiting_behavior")
     await send_whatsapp_message(phone, BEHAVIOR_QUESTION)
 
@@ -364,7 +315,7 @@ async def handle_droppings_reply(phone: str, reply: str):
 async def handle_behavior_reply(phone: str, reply: str):
     """
     Farmer replied with behaviour signs.
-    Now run the full diagnosis and send the confirmed result.
+    Run full diagnosis and send result.
     """
     profile = get_farm_profile(phone) or {}
     clear_onboarding_state(phone)
@@ -375,93 +326,39 @@ async def handle_behavior_reply(phone: str, reply: str):
         if num in BEHAVIOR_MAP:
             behavior.append(BEHAVIOR_MAP[num])
 
-    # Build symptoms dict from stored droppings + behavior just received
     droppings = profile.pop("_pending_droppings", "normal")
+    audio_result = profile.pop("_pending_audio_result", {
+        "is_anomalous": True,
+        "probability": 0.6,
+    })
+    save_farm_profile(phone, profile)
+
     symptoms = {
         "droppings": droppings,
         "behavior": behavior,
         "cocci_medicine_given": profile.get("cocci_medicine_given", False),
     }
 
-    # Retrieve pending audio result
-    audio_result = profile.pop("_pending_audio_result", {
-        "is_anomalous": True,
-        "probability": 0.6,
-    })
-    profile["_pending_behavior"] = behavior
-    save_farm_profile(phone, profile)
-
-    # Run full diagnosis
-    # After storing behavior — ask for optional photo
-    set_onboarding_state(phone, "awaiting_image")
-    await send_whatsapp_message(phone,
-        "📸 *One last thing — can you send a photo of the droppings?*\n\n"
-        "Just point your phone camera at the litter and send the photo here.\n"
-        "This helps me give you a more accurate diagnosis.\n\n"
-        "If you cannot take a photo right now, just reply *SKIP*."
+    # Run diagnosis
+    diagnosis = run_diagnosis(
+        farm_profile=profile,
+        audio_result=audio_result,
+        symptoms=symptoms,
     )
 
     save_analysis_result(phone, diagnosis)
     await send_whatsapp_message(phone, diagnosis["whatsapp_message"])
 
-    # Log agent action for monitoring
     log_agent_action(
         "diagnosis",
         phone,
         f"diagnosed_{diagnosis.get('disease', 'unknown')}_{diagnosis.get('confidence', '')}"
     )
 
-async def handle_image_message(phone: str, image_id: str):
-    profile = get_farm_profile(phone) or {}
-    clear_onboarding_state(phone)
-
-    headers = {"Authorization": f"Bearer {WHATSAPP_API_TOKEN}"}
-    async with httpx.AsyncClient() as client:
-        meta = await client.get(
-            f"https://graph.facebook.com/v18.0/{image_id}", headers=headers
-        )
-        image_url = meta.json().get("url")
-        image_resp = await client.get(image_url, headers=headers)
-        image_bytes = image_resp.content
-
-    image_result = pipeline.analyse_image(image_bytes)
-    await run_diagnosis_and_send(phone, image_result=image_result)
-
-
-async def run_diagnosis_and_send(phone: str, image_result: dict = None):
-    """Run full diagnosis with all pending signals and send result."""
-    profile = get_farm_profile(phone) or {}
-
-    droppings = profile.pop("_pending_droppings", "normal")
-    behavior = profile.pop("_pending_behavior", [])
-    audio_result = profile.pop("_pending_audio_result", {
-        "is_anomalous": True, "probability": 0.6
-    })
-    save_farm_profile(phone, profile)
-
-    symptoms = {
-        "droppings": droppings,
-        "behavior": behavior,
-        "cocci_medicine_given": profile.get("cocci_medicine_given", False),
-    }
-
-    diagnosis = run_diagnosis(
-        farm_profile=profile,
-        audio_result=audio_result,
-        symptoms=symptoms,
-        image_result=image_result,
-    )
-
-    save_analysis_result(phone, diagnosis)
-    await send_whatsapp_message(phone, diagnosis["whatsapp_message"])
 
 # ── DAILY CHECK-IN ────────────────────────────────────────────────────────────
 
 async def send_daily_checkin(phone: str, farmer_name: str, profile: dict):
-    """
-    Sent by Farm Monitor Agent every morning.
-    Includes vaccination reminders if anything is due today.
-    """
     flock_age_weeks = get_flock_age_weeks(profile.get("doc_arrival_date", ""))
     vacc_log = get_vaccination_log(phone) or {}
     reminders = get_todays_reminders(profile, vacc_log)
@@ -486,7 +383,6 @@ async def send_daily_checkin(phone: str, farmer_name: str, profile: dict):
 
 
 async def handle_daily_checkin_reply(phone: str, reply: str):
-    """Process farmer's daily check-in reply."""
     profile = get_farm_profile(phone) or {}
     region = profile.get("region", "Ashanti")
     vsd = VSD_CONTACTS.get(region, VSD_CONTACTS["Ashanti"])
@@ -512,7 +408,6 @@ async def handle_daily_checkin_reply(phone: str, reply: str):
         )
 
     elif reply == "4":
-        # Farmer vaccinated today — ask which vaccine
         await send_whatsapp_message(phone,
             "✅ *Which vaccine did you give today?*\n\n"
             "1 — 1st Gumboro\n"
@@ -538,7 +433,6 @@ async def handle_daily_checkin_reply(phone: str, reply: str):
         log_agent_action("farm_monitor", phone, "new_birds_recorded")
 
     elif reply == "6":
-        # New batch of DOC arrived
         set_onboarding_state(phone, "awaiting_doc_date")
         await send_whatsapp_message(phone,
             "🐥 *New day-old chicks!*\n\n"
@@ -554,26 +448,23 @@ async def handle_daily_checkin_reply(phone: str, reply: str):
 
 
 async def handle_doc_date_reply(phone: str, reply: str):
-    """Register a new batch of day-old chicks."""
     profile = get_farm_profile(phone) or {}
     clear_onboarding_state(phone)
 
+    from datetime import timedelta
     if reply == "1":
         doc_date = date.today().isoformat()
     else:
-        # Approximate — arrived a few days ago
-        from datetime import timedelta
         doc_date = (date.today() - timedelta(days=3)).isoformat()
 
     profile, msg = register_new_flock(profile, doc_date)
     save_farm_profile(phone, profile)
-    save_vaccination_log(phone, {})  # Reset vaccination log for new flock
+    save_vaccination_log(phone, {})
     await send_whatsapp_message(phone, msg)
     log_agent_action("farm_monitor", phone, "new_flock_registered")
 
 
 async def handle_death_count_reply(phone: str, reply: str):
-    """Record death count and give urgent guidance."""
     profile = get_farm_profile(phone) or {}
     region = profile.get("region", "Ashanti")
     vsd = VSD_CONTACTS.get(region, VSD_CONTACTS["Ashanti"])
@@ -690,7 +581,6 @@ async def handle_weekly_check_reply(phone: str, reply: str, idx: int):
     profile = get_farm_profile(phone) or {}
     profile[question["key"]] = options[reply]
 
-    # Surface droppings data to profile for cascade detection
     if question["key"] == "weekly_droppings":
         profile["_last_droppings"] = options[reply]
 
@@ -712,12 +602,10 @@ async def handle_weekly_check_reply(phone: str, reply: str, idx: int):
 
 
 async def send_weekly_feedback(phone: str, profile: dict):
-    """After weekly check, run mini-diagnosis on the symptom data collected."""
     droppings = profile.get("_last_droppings", "normal")
     face_lesions = profile.get("_face_lesions_reported", False)
     deaths = profile.get("weekly_deaths", "none")
 
-    # Build a symptom set from weekly check answers
     behavior = []
     if profile.get("weekly_appetite") in ["some_reduced", "most_reduced"]:
         behavior.append("reduced_appetite")
@@ -732,10 +620,8 @@ async def send_weekly_feedback(phone: str, profile: dict):
         "cocci_medicine_given": profile.get("cocci_medicine_given", False),
     }
 
-    # No audio in a weekly check — use empty audio result
     audio_result = {"is_anomalous": False, "probability": 0.0}
 
-    # Only run diagnosis if there are actual concerning symptoms
     has_concerns = (
         droppings != "normal"
         or face_lesions
@@ -756,7 +642,6 @@ async def send_weekly_feedback(phone: str, profile: dict):
             )
             return
 
-    # All clear
     flock_age_weeks = get_flock_age_weeks(profile.get("doc_arrival_date", ""))
     await send_whatsapp_message(phone,
         f"✅ *Weekly check complete — all good!*\n\n"
@@ -770,34 +655,38 @@ async def send_weekly_feedback(phone: str, profile: dict):
 # ── COMMAND HANDLER ───────────────────────────────────────────────────────────
 
 async def handle_command(phone: str, command: str, raw_text: str = ""):
-    """Handle keyword commands and numbered daily check-in replies."""
     profile = get_farm_profile(phone) or {}
     state = get_onboarding_state(phone)
     region = profile.get("region", "Ashanti")
     vsd = VSD_CONTACTS.get(region, VSD_CONTACTS["Ashanti"])
 
-    # Death count reply
     if state == "awaiting_death_count":
         await handle_death_count_reply(phone, command)
         return
 
-    # Vaccine confirmation reply
     if state == "awaiting_vaccine_confirm":
         await handle_vaccine_confirmation(phone, command)
         return
 
-    # DOC date reply
     if state == "awaiting_doc_date":
         await handle_doc_date_reply(phone, command)
         return
 
-    # Daily check-in numbered replies
     if command in ["1", "2", "3", "4", "5", "6"]:
         await handle_daily_checkin_reply(phone, command)
         return
 
-    # Standard commands
-    if command == "RISK":
+    if command == "RESET":
+        clear_onboarding_state(phone)
+        profile.pop("_pending_audio_result", None)
+        profile.pop("_pending_droppings", None)
+        profile.pop("_pending_behavior", None)
+        save_farm_profile(phone, profile)
+        await send_whatsapp_message(phone,
+            "✅ State reset. Send *HI* to continue."
+        )
+
+    elif command == "RISK":
         profile["current_month"] = datetime.now().month
         result = compute_farm_risk_score(profile)
         monthly = MONTHLY_RISK_DATA[datetime.now().month]
@@ -841,7 +730,6 @@ async def handle_command(phone: str, command: str, raw_text: str = ""):
         )
 
     elif command.startswith("DOC"):
-        # Farmer registering a new flock: "DOC 2025-05-01" or just "DOC"
         parts = raw_text.split()
         if len(parts) == 2:
             doc_date = parts[1]
@@ -873,12 +761,12 @@ async def handle_command(phone: str, command: str, raw_text: str = ""):
             "*VACC* — vaccination schedule\n"
             "*BIOSEC* — biosecurity score\n"
             "*HELP* — emergency vet contacts\n"
-            "*DOC* — register new day-old chicks"
+            "*DOC* — register new day-old chicks\n"
+            "*RESET* — clear stuck state"
         )
 
 
 async def handle_vaccine_confirmation(phone: str, reply: str):
-    """Record which vaccine the farmer gave today."""
     vacc_id_map = {
         "1": "gumboro_1", "2": "gumboro_2",
         "3": "newcastle_1", "4": "newcastle_2",
@@ -899,7 +787,6 @@ async def handle_vaccine_confirmation(phone: str, reply: str):
     updated_log = record_vaccination(vacc_id, vacc_log)
     save_vaccination_log(phone, updated_log)
 
-    # Update profile vaccination status flags
     profile = get_farm_profile(phone) or {}
     if "gumboro" in vacc_id:
         profile["gumboro_vaccinated"] = "both" if vacc_id == "gumboro_2" else "first_only"
@@ -918,7 +805,6 @@ async def handle_vaccine_confirmation(phone: str, reply: str):
 # ── MAIN MENU FOR RETURNING FARMER ───────────────────────────────────────────
 
 async def send_main_menu(phone: str, profile: dict):
-    """Returning farmer — show dashboard summary."""
     profile["current_month"] = datetime.now().month
     risk = compute_farm_risk_score(profile)
     flock_age_weeks = get_flock_age_weeks(profile.get("doc_arrival_date", ""))
