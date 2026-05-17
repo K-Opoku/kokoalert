@@ -305,7 +305,21 @@ async def handle_audio_message(phone: str, audio_id: str):
     except asyncio.TimeoutError:
         print(f"[ERROR] Audio pipeline timed out after 30 seconds")
         await send_whatsapp_message(phone,
-            "❌ Analysis took too long. Please send a shorter recording — 1
+            "❌ Analysis took too long. Please send a shorter recording — 10 seconds maximum."
+        )
+
+    except Exception as e:
+        print(f"[ERROR] handle_audio_message: {e}")
+        await send_whatsapp_message(phone,
+            "❌ Something went wrong analysing your recording.\n\n"
+            "Please try again, or type *HELP* for emergency vet contacts."
+        )
+
+    finally:
+        # Clean up temp files no matter what
+        for path in [ogg_path, wav_path]:
+            if path and os.path.exists(path):
+                os.unlink(path)
 
 # ── DROPPINGS + BEHAVIOR FOLLOW-UP ───────────────────────────────────────────
 
