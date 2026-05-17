@@ -14,6 +14,7 @@ streamlit==1.32.0
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 httpx>=0.26.0
+pydub
 
 # Scheduler — Farm Monitor Agent (CRITICAL)
 apscheduler==3.10.4
