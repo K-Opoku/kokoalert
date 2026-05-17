@@ -10,4 +10,4 @@ services:
       - key: WHATSAPP_PHONE_NUMBER_ID
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
-        sync: false
+        sync: falsemodels

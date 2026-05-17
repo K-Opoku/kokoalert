@@ -231,12 +231,14 @@ async def send_onboarding_complete(phone: str, profile: dict):
 
 async def handle_audio_message(phone: str, audio_id: str):
     """
-    Download voice note → run CNN classifier in background thread
-    so the server stays responsive during analysis.
+    Download voice note → convert to WAV → run CNN classifier in background thread.
     """
     await send_whatsapp_message(phone,
         "🧠 *Analysing your flock...* About 10 seconds."
     )
+
+    ogg_path = None
+    wav_path = None
 
     try:
         # Download audio from WhatsApp
@@ -249,24 +251,37 @@ async def handle_audio_message(phone: str, audio_id: str):
             audio_url = meta_resp.json().get("url")
             audio_resp = await client.get(audio_url, headers=headers)
 
+        # Save as OGG first
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             tmp.write(audio_resp.content)
-            tmp_path = tmp.name
+            ogg_path = tmp.name
+
+        # Convert OGG to WAV — librosa handles WAV natively without codec issues
+        from pydub import AudioSegment
+        wav_path = ogg_path.replace(".ogg", ".wav")
+        audio_segment = AudioSegment.from_ogg(ogg_path)
+        audio_segment.export(wav_path, format="wav")
+        os.unlink(ogg_path)
+        ogg_path = None
+        print(f"[AUDIO] Converted to WAV: {wav_path}")
 
         farm_profile = get_farm_profile(phone) or {}
 
         if not pipeline._loaded:
             pipeline.load_models()
 
-        # ── FIX: Run blocking pipeline in thread executor ──────────────────
-        # This keeps the server responsive while the CNN processes audio.
+        # Run blocking pipeline in thread executor
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: pipeline.analyse_audio(tmp_path, farm_profile, {})
+        result = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: pipeline.analyse_audio(wav_path, farm_profile, {})
+            ),
+            timeout=30.0
         )
 
-        os.unlink(tmp_path)
+        os.unlink(wav_path)
+        wav_path = None
         save_analysis_result(phone, result)
 
         status = result.get("status")
@@ -287,13 +302,10 @@ async def handle_audio_message(phone: str, audio_id: str):
             else:
                 await send_whatsapp_message(phone, result["whatsapp_message"])
 
-    except Exception as e:
-        print(f"[ERROR] handle_audio_message: {e}")
+    except asyncio.TimeoutError:
+        print(f"[ERROR] Audio pipeline timed out after 30 seconds")
         await send_whatsapp_message(phone,
-            "❌ Something went wrong analysing your recording.\n\n"
-            "Please try again, or type *HELP* for emergency vet contacts."
-        )
-
+            "❌ Analysis took too long. Please send a shorter recording — 1
 
 # ── DROPPINGS + BEHAVIOR FOLLOW-UP ───────────────────────────────────────────
 
