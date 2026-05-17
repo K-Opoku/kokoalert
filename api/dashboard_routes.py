@@ -118,7 +118,7 @@ async def analyze_audio(
 
     try:
         from src.preprocess import file_to_spectrograms, check_recording_quality
-        from src.disease_classifier import load_autoencoder, is_anomalous
+        from src.anomaly_detector import load_autoencoder, is_anomalous
         import numpy as np
 
         quality = check_recording_quality(tmp_path)
