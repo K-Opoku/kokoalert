@@ -29,6 +29,7 @@ setuptools
 
 # Testing
 pytest>=8.2.0
+python-multipart=0.0.29
 
 # Frontend  
 python-multipart

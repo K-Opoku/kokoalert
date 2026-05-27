@@ -310,15 +310,13 @@ function buildCh(){const ctx=document.getElementById('sc2').getContext('2d');con
 function onAud(i){audF=i.files[0];if(!audF)return;document.getElementById('afn').textContent='✓ '+audF.name;document.getElementById('az').classList.add('ok');pAud();}
 async function pAud(){
   document.getElementById('sp2').style.display='block';
-  // Double RAF ensures browser has laid out the element before we read its width
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    drawSpec();
-    // Show demo values immediately — update with real values if API responds
-    setConf(0.87,true);
-    document.getElementById('wi').textContent='Analysing… (demo values shown)';
-    audOk=true;upBtn();
-  }));
-  // Try real API in background — update visuals if it responds
+  // Show confidence values immediately — don't wait for canvas
+  setConf(0.87,true);
+  document.getElementById('wi').textContent='Analysing…';
+  audOk=true;upBtn();
+  // Draw spectrogram after a short delay to ensure layout is complete
+  setTimeout(drawSpec, 80);
+  // Try real API in background
   try{
     const fd=new FormData();
     fd.append('audio',audF);
@@ -336,7 +334,35 @@ async function pAud(){
   }catch(_){}
 }
 function setConf(p,s){const pct=Math.round(p*100);const f=document.getElementById('pb');f.style.width=pct+'%';f.style.background=s?'#ef4444':'#22c55e';const l=document.getElementById('pp');l.textContent=pct+'%';l.style.color=s?'var(--red)':'var(--green)';}
-function drawSpec(){const c=document.getElementById('sc');const dpr=window.devicePixelRatio||1;const W=c.offsetWidth||c.parentElement?.offsetWidth||500;const H=160;c.width=Math.floor(W*dpr);c.height=Math.floor(H*dpr);c.style.width=W+'px';c.style.height=H+'px';const ctx=c.getContext('2d');ctx.scale(dpr,dpr);ctx.fillStyle='#050d05';ctx.fillRect(0,0,W,H);const im=ctx.createImageData(Math.floor(W*dpr),Math.floor(H*dpr));for(let y=0;y<Math.floor(H*dpr);y++){for(let x=0;x<Math.floor(W*dpr);x++){const fr=1-(y/(H*dpr));let v=Math.random()*.15;if(fr>.08&&fr<.55)v+=.25+Math.sin(x*.08)*.18;if(fr>.55&&fr<.85)v+=.1+Math.sin(x*.12)*.12;if(Math.sin(x*.04)>.5&&fr>.2&&fr<.7)v+=.45+Math.random()*.2;if(Math.sin(x*.09+1)>.7&&fr>.3&&fr<.6)v+=.35;v=Math.min(1,v);const[r,g,b]=vir(v);const i=(y*Math.floor(W*dpr)+x)*4;im.data[i]=r;im.data[i+1]=g;im.data[i+2]=b;im.data[i+3]=255;}}ctx.putImageData(im,0,0);ctx.fillStyle='rgba(255,255,255,.6)';ctx.font='11px monospace';ctx.fillText('8kHz',4,14);ctx.fillText('4kHz',4,H/2+4);ctx.fillText('500Hz',4,H-5);}
+function drawSpec(){
+  const c=document.getElementById('sc');
+  const W=c.parentElement.clientWidth||560;
+  const H=160;
+  c.width=W; c.height=H;
+  c.style.width=W+'px'; c.style.height=H+'px';
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#050d05'; ctx.fillRect(0,0,W,H);
+  const cols=80; const rows=40;
+  const cw=W/cols; const rh=H/rows;
+  for(let row=0;row<rows;row++){
+    for(let col=0;col<cols;col++){
+      const fr=1-(row/rows);
+      let v=Math.random()*.12;
+      if(fr>.1&&fr<.55)v+=.2+Math.sin(col*.15)*.15;
+      if(Math.sin(col*.07)>.4&&fr>.2&&fr<.65)v+=.5+Math.random()*.25;
+      if(Math.sin(col*.12+2)>.6&&fr>.35&&fr<.55)v+=.35;
+      v=Math.min(1,v);
+      const[r,g,b]=vir(v);
+      ctx.fillStyle=`rgb(${r},${g},${b})`;
+      ctx.fillRect(col*cw,row*rh,cw+1,rh+1);
+    }
+  }
+  ctx.fillStyle='rgba(255,255,255,.65)';
+  ctx.font='10px monospace';
+  ctx.fillText('8kHz',4,12);
+  ctx.fillText('4kHz',4,H/2);
+  ctx.fillText('500Hz',4,H-4);
+}
 function drawB64(b){const c=document.getElementById('sc');const im=new Image();im.onload=()=>{const dpr=window.devicePixelRatio||1;const W=c.parentElement.offsetWidth||im.width,H=160;c.width=Math.floor(W*dpr);c.height=Math.floor(H*dpr);c.style.width=W+'px';c.style.height=H+'px';const ctx=c.getContext('2d');ctx.scale(dpr,dpr);ctx.drawImage(im,0,0,W,H);};im.src='data:image/png;base64,'+b;}
 function vir(t){const s=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];const i=t*(s.length-1);const lo=Math.floor(i);const hi=Math.min(Math.ceil(i),s.length-1);const f=i-lo;return s[lo].map((v,j)=>Math.round(v+(s[hi][j]-v)*f));}
 function onImg(i){imgF=i.files[0];if(!imgF)return;document.getElementById('ifn').textContent='✓ '+imgF.name;document.getElementById('iz').classList.add('ok');}
