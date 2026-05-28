@@ -394,14 +394,20 @@ async function pAud(){
   upBtn();
   setTimeout(drawSpec,80);
 
+  // Show a warm-up notice after 10s if still waiting
+  const warmupTimer=setTimeout(()=>{
+    document.getElementById('wi').textContent='⏳ Server is waking up on Render free tier — this can take up to 2 minutes on first use…';
+  },10000);
+
   try{
     const fd=new FormData();
     fd.append('audio',audF);
     fd.append('flock_age_weeks',document.getElementById('fa').value);
     const r=await Promise.race([
       fetch(`${API}/analyze/audio`,{method:'POST',body:fd}),
-      new Promise((_,j)=>setTimeout(()=>j(new Error('Timeout after 60s')),60000))
+      new Promise((_,j)=>setTimeout(()=>j(new Error('Timeout after 120s — server may still be waking up. Wait 30s and try again.')),120000))
     ]);
+    clearTimeout(warmupTimer);
     if(r.ok){
       const d=await r.json();
       console.log('Audio API response:', d);
@@ -414,8 +420,9 @@ async function pAud(){
       document.getElementById('wi').textContent=`API error ${r.status} — check console`;
     }
   }catch(e){
+    clearTimeout(warmupTimer);
     console.error('Audio API fetch failed:', e);
-    document.getElementById('wi').textContent=`Connection error — check console (F12)`;
+    document.getElementById('wi').textContent=`${e.message}`;
   }
 }
 
@@ -528,6 +535,11 @@ async function diagnose(){
 
   let res=null,demo=false;
 
+  // Show warm-up notice after 10s
+  const warmupTimer2=setTimeout(()=>{
+    btn.textContent='⏳ Server waking up — please wait…';
+  },10000);
+
   try{
     const fd=new FormData();
     fd.append('audio',audF);
@@ -537,8 +549,9 @@ async function diagnose(){
 
     const r=await Promise.race([
       fetch(`${API}/analyze/full`,{method:'POST',body:fd}),
-      new Promise((_,j)=>setTimeout(()=>j(new Error('Timeout after 60s — Render may be waking up, try again in 30s')),60000))
+      new Promise((_,j)=>setTimeout(()=>j(new Error('Timeout after 120s — server may still be waking up. Wait 30s and try again.')),120000))
     ]);
+    clearTimeout(warmupTimer2);
 
     if(r.ok){
       res=await r.json();
@@ -550,6 +563,7 @@ async function diagnose(){
       showApiErr(msg);
     }
   }catch(e){
+    clearTimeout(warmupTimer2);
     console.error('Diagnosis API fetch failed:', e);
     showApiErr(e.message||'Network error — is the Render service awake? Check console (F12).');
   }
