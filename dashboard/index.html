@@ -82,6 +82,12 @@ select option{background:var(--bg3)}
 .ab:hover{opacity:.87}
 .ab:disabled{opacity:.35;cursor:not-allowed}
 #dr{display:none}
+
+/* ── error banner ── */
+.err-banner{display:none;background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.35);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--red);line-height:1.5}
+.err-banner.show{display:block}
+.err-banner strong{display:block;font-size:13px;margin-bottom:3px}
+
 .dn{background:var(--bbg);border:1px solid rgba(96,165,250,.25);border-radius:var(--r);padding:9px 13px;font-size:12px;color:var(--blue);margin-bottom:14px}
 .rh{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
 .rd{font-size:20px;font-weight:700;line-height:1.2}
@@ -221,7 +227,13 @@ select option{background:var(--bg3)}
           <div style="font-size:12px;color:var(--muted)">Upload a voice note and fill the form,<br>then click Analyze</div>
         </div>
         <div id="dr">
-          <div class="dn" id="dnt">ℹ️ Demo mode — showing sample output. Deploy API for live analysis.</div>
+          <!-- API error banner — shown when request fails -->
+          <div class="err-banner" id="apierr">
+            <strong>⚠️ Could not reach the API</strong>
+            <span id="apierr-msg">Check the browser console (F12) for the exact error.</span>
+          </div>
+          <!-- Demo mode notice — shown when falling back to mock data -->
+          <div class="dn" id="dnt" style="display:none">ℹ️ Demo mode — API unreachable, showing simulated output.</div>
           <div class="rh"><div class="rd" id="rdis">—</div><div class="rs" id="rsub">—</div><span class="ub" id="rubadge">—</span></div>
           <div class="sm">Diagnosis Confidence</div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
@@ -300,40 +312,123 @@ select option{background:var(--bg3)}
 <script>
 const API='https://kokoalert-1.onrender.com/api';
 let audF=null,imgF=null,audOk=false;
-function sw(n){document.querySelectorAll('.pg').forEach((p,i)=>p.classList.toggle('on',i===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',i===n));if(n===0)load();}
+
+function sw(n){
+  document.querySelectorAll('.pg').forEach((p,i)=>p.classList.toggle('on',i===n));
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',i===n));
+  if(n===0)load();
+}
+
 const MK={total_farms:8,total_birds:5120,detections_this_month:3,vaccination_compliance_pct:75,gumboro_danger_farms:[{name:'Kwame Asante Farm',age_weeks:4,region:'Kumasi Central'},{name:'Yaw Darko Farm',age_weeks:5,region:'Ashanti New Town'}],farms_by_region:{'Ashanti':5,'Greater Accra':2,'Eastern':1},recent_alerts:[{disease_name:'Newcastle Disease',confidence:'High',urgency:'emergency',farm_name:'Kwame Asante Farm',region:'Kumasi Central',recorded_at:'2026-05-13T06:47:00'},{disease_name:'Chronic Respiratory Disease (CRD)',confidence:'Medium',urgency:'urgent',farm_name:'Yaw Darko Farm',region:'Ashanti New Town',recorded_at:'2026-05-11T07:12:00'},{disease_name:'Coccidiosis',confidence:'High',urgency:'urgent',farm_name:'Abena Mensah Farm',region:'Ejisu',recorded_at:'2026-05-08T08:03:00'}]};
-async function load(){let d=MK;try{const r=await Promise.race([fetch(`${API}/dashboard/stats`),new Promise((_,j)=>setTimeout(j,5000))]);if(r.ok)d=await r.json();}catch(_){}cnt('mf',d.total_farms);cnt('mb',d.total_birds,true);cnt('md',d.detections_this_month);document.getElementById('mv').textContent=d.vaccination_compliance_pct+'%';rFeed(d.recent_alerts||[]);rDanger(d.gumboro_danger_farms||[]);rReg(d.farms_by_region||{});buildCh();}
-function rFeed(a){const el=document.getElementById('feed');if(!a.length){el.innerHTML='<div style="color:var(--muted);font-size:13px">No alerts this month</div>';return;}el.innerHTML=a.map(x=>{const dt=x.recorded_at?new Date(x.recorded_at):null;const t=dt?dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' · '+dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'';const bc=x.urgency==='emergency'?'be':x.urgency==='urgent'?'bu':'bm';const bd=x.urgency==='emergency'?'xe':x.urgency==='urgent'?'xu':'xm';return`<div class="ali"><div class="abar ${bc}"></div><div><div class="adis">${x.disease_name}<span class="abadge ${bd}">${x.urgency.toUpperCase()}</span></div><div class="amet">${x.farm_name} · ${x.region} · ${t}</div></div></div>`;}).join('');}
-function rDanger(f){const el=document.getElementById('df2');if(!f.length){el.innerHTML='<div style="color:var(--green);font-size:13px">✓ No farms in the danger window right now</div>';return;}el.innerHTML=`<div style="font-size:12px;color:var(--amber);margin-bottom:10px">${f.length} farm${f.length>1?'s':''} at highest risk. Gumboro kills up to 70% of birds with no cure.</div>`+f.map(x=>`<div class="df"><div><div class="dfn">${x.name}</div><div class="dfm">${x.region}</div></div><div class="wb">Week ${x.age_weeks}</div></div>`).join('');}
-function rReg(r){const el=document.getElementById('rb');const mx=Math.max(...Object.values(r));el.innerHTML=Object.entries(r).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="rbr"><div class="rbl">${k}</div><div class="rbb"><div class="rbf" style="width:${Math.round(v/mx*100)}%"></div></div><div class="rbn">${v}</div></div>`).join('');}
-function buildCh(){const ctx=document.getElementById('sc2').getContext('2d');const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const pt=[27,26,22.97,25,26,27,28,29,31.86,33,34.27,32];const nw=new Date().getMonth();const cl=pt.map((v,i)=>i===nw?'#3b82f6':v>=33?'#ef4444':v>=30?'#f97316':v>=28?'#eab308':'#22c55e');new Chart(ctx,{type:'bar',data:{labels:mn,datasets:[{data:pt,backgroundColor:cl,borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw.toFixed(1)}% of annual cases`}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#52695a',font:{size:10,family:'Space Grotesk'}}},y:{min:20,max:36,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#52695a',font:{size:10},callback:v=>v+'%'}}}}});}
-function onAud(i){audF=i.files[0];if(!audF)return;document.getElementById('afn').textContent='✓ '+audF.name;document.getElementById('az').classList.add('ok');pAud();}
+
+async function load(){
+  let d=MK;
+  try{
+    const r=await Promise.race([
+      fetch(`${API}/dashboard/stats`),
+      new Promise((_,j)=>setTimeout(j,5000))
+    ]);
+    if(r.ok)d=await r.json();
+  }catch(e){
+    console.warn('Dashboard stats fetch failed (using mock data):', e);
+  }
+  cnt('mf',d.total_farms);
+  cnt('mb',d.total_birds,true);
+  cnt('md',d.detections_this_month);
+  document.getElementById('mv').textContent=d.vaccination_compliance_pct+'%';
+  rFeed(d.recent_alerts||[]);
+  rDanger(d.gumboro_danger_farms||[]);
+  rReg(d.farms_by_region||{});
+  buildCh();
+}
+
+function rFeed(a){
+  const el=document.getElementById('feed');
+  if(!a.length){el.innerHTML='<div style="color:var(--muted);font-size:13px">No alerts this month</div>';return;}
+  el.innerHTML=a.map(x=>{
+    const dt=x.recorded_at?new Date(x.recorded_at):null;
+    const t=dt?dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' · '+dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'';
+    const bc=x.urgency==='emergency'?'be':x.urgency==='urgent'?'bu':'bm';
+    const bd=x.urgency==='emergency'?'xe':x.urgency==='urgent'?'xu':'xm';
+    return`<div class="ali"><div class="abar ${bc}"></div><div><div class="adis">${x.disease_name}<span class="abadge ${bd}">${x.urgency.toUpperCase()}</span></div><div class="amet">${x.farm_name} · ${x.region} · ${t}</div></div></div>`;
+  }).join('');
+}
+
+function rDanger(f){
+  const el=document.getElementById('df2');
+  if(!f.length){el.innerHTML='<div style="color:var(--green);font-size:13px">✓ No farms in the danger window right now</div>';return;}
+  el.innerHTML=`<div style="font-size:12px;color:var(--amber);margin-bottom:10px">${f.length} farm${f.length>1?'s':''} at highest risk. Gumboro kills up to 70% of birds with no cure.</div>`
+    +f.map(x=>`<div class="df"><div><div class="dfn">${x.name}</div><div class="dfm">${x.region}</div></div><div class="wb">Week ${x.age_weeks}</div></div>`).join('');
+}
+
+function rReg(r){
+  const el=document.getElementById('rb');
+  const mx=Math.max(...Object.values(r));
+  el.innerHTML=Object.entries(r).sort((a,b)=>b[1]-a[1]).map(([k,v])=>
+    `<div class="rbr"><div class="rbl">${k}</div><div class="rbb"><div class="rbf" style="width:${Math.round(v/mx*100)}%"></div></div><div class="rbn">${v}</div></div>`
+  ).join('');
+}
+
+function buildCh(){
+  const ctx=document.getElementById('sc2').getContext('2d');
+  const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const pt=[27,26,22.97,25,26,27,28,29,31.86,33,34.27,32];
+  const nw=new Date().getMonth();
+  const cl=pt.map((v,i)=>i===nw?'#3b82f6':v>=33?'#ef4444':v>=30?'#f97316':v>=28?'#eab308':'#22c55e');
+  new Chart(ctx,{type:'bar',data:{labels:mn,datasets:[{data:pt,backgroundColor:cl,borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.raw.toFixed(1)}% of annual cases`}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#52695a',font:{size:10,family:'Space Grotesk'}}},y:{min:20,max:36,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#52695a',font:{size:10},callback:v=>v+'%'}}}}});
+}
+
+function onAud(i){
+  audF=i.files[0];
+  if(!audF)return;
+  document.getElementById('afn').textContent='✓ '+audF.name;
+  document.getElementById('az').classList.add('ok');
+  pAud();
+}
+
 async function pAud(){
   document.getElementById('sp2').style.display='block';
-  // Show confidence values immediately — don't wait for canvas
   setConf(0.87,true);
   document.getElementById('wi').textContent='Analysing…';
-  audOk=true;upBtn();
-  // Draw spectrogram after a short delay to ensure layout is complete
-  setTimeout(drawSpec, 80);
-  // Try real API in background
+  audOk=true;
+  upBtn();
+  setTimeout(drawSpec,80);
+
   try{
     const fd=new FormData();
     fd.append('audio',audF);
     fd.append('flock_age_weeks',document.getElementById('fa').value);
     const r=await Promise.race([
       fetch(`${API}/analyze/audio`,{method:'POST',body:fd}),
-      new Promise((_,j)=>setTimeout(j,30000))
+      new Promise((_,j)=>setTimeout(()=>j(new Error('Timeout after 60s')),60000))
     ]);
     if(r.ok){
       const d=await r.json();
+      console.log('Audio API response:', d);
       if(d.spectrogram_base64)drawB64(d.spectrogram_base64);
       setConf(d.probability,d.is_anomalous);
       document.getElementById('wi').textContent=`${d.anomalous_windows} / ${d.total_windows} windows anomalous · ${d.duration_seconds}s recording`;
+    } else {
+      const txt=await r.text();
+      console.error('Audio API error response:', r.status, txt);
+      document.getElementById('wi').textContent=`API error ${r.status} — check console`;
     }
-  }catch(_){}
+  }catch(e){
+    console.error('Audio API fetch failed:', e);
+    document.getElementById('wi').textContent=`Connection error — check console (F12)`;
+  }
 }
-function setConf(p,s){const pct=Math.round(p*100);const f=document.getElementById('pb');f.style.width=pct+'%';f.style.background=s?'#ef4444':'#22c55e';const l=document.getElementById('pp');l.textContent=pct+'%';l.style.color=s?'var(--red)':'var(--green)';}
+
+function setConf(p,s){
+  const pct=Math.round(p*100);
+  const f=document.getElementById('pb');
+  f.style.width=pct+'%';
+  f.style.background=s?'#ef4444':'#22c55e';
+  const l=document.getElementById('pp');
+  l.textContent=pct+'%';
+  l.style.color=s?'var(--red)':'var(--green)';
+}
+
 function drawSpec(){
   const c=document.getElementById('sc');
   const W=c.parentElement.clientWidth||560;
@@ -363,14 +458,171 @@ function drawSpec(){
   ctx.fillText('4kHz',4,H/2);
   ctx.fillText('500Hz',4,H-4);
 }
-function drawB64(b){const c=document.getElementById('sc');const im=new Image();im.onload=()=>{const dpr=window.devicePixelRatio||1;const W=c.parentElement.offsetWidth||im.width,H=160;c.width=Math.floor(W*dpr);c.height=Math.floor(H*dpr);c.style.width=W+'px';c.style.height=H+'px';const ctx=c.getContext('2d');ctx.scale(dpr,dpr);ctx.drawImage(im,0,0,W,H);};im.src='data:image/png;base64,'+b;}
-function vir(t){const s=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];const i=t*(s.length-1);const lo=Math.floor(i);const hi=Math.min(Math.ceil(i),s.length-1);const f=i-lo;return s[lo].map((v,j)=>Math.round(v+(s[hi][j]-v)*f));}
-function onImg(i){imgF=i.files[0];if(!imgF)return;document.getElementById('ifn').textContent='✓ '+imgF.name;document.getElementById('iz').classList.add('ok');}
+
+function drawB64(b){
+  const c=document.getElementById('sc');
+  const im=new Image();
+  im.onload=()=>{
+    const dpr=window.devicePixelRatio||1;
+    const W=c.parentElement.offsetWidth||im.width,H=160;
+    c.width=Math.floor(W*dpr);
+    c.height=Math.floor(H*dpr);
+    c.style.width=W+'px';
+    c.style.height=H+'px';
+    const ctx=c.getContext('2d');
+    ctx.scale(dpr,dpr);
+    ctx.drawImage(im,0,0,W,H);
+  };
+  im.src='data:image/png;base64,'+b;
+}
+
+function vir(t){
+  const s=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+  const i=t*(s.length-1);
+  const lo=Math.floor(i);
+  const hi=Math.min(Math.ceil(i),s.length-1);
+  const f=i-lo;
+  return s[lo].map((v,j)=>Math.round(v+(s[hi][j]-v)*f));
+}
+
+function onImg(i){
+  imgF=i.files[0];
+  if(!imgF)return;
+  document.getElementById('ifn').textContent='✓ '+imgF.name;
+  document.getElementById('iz').classList.add('ok');
+}
+
 function upBtn(){document.getElementById('abtn').disabled=!audOk;}
-async function diagnose(){const btn=document.getElementById('abtn');btn.disabled=true;btn.textContent='Analyzing…';const bh=[...document.querySelectorAll('.cg input:checked')].map(c=>c.value);const sy={droppings:document.getElementById('fd').value,behavior:bh,cocci_medicine_given:false,flock_age_weeks:parseInt(document.getElementById('fa').value)};const pr={region:document.getElementById('fr').value,flock_age_weeks:parseInt(document.getElementById('fa').value),gumboro_vaccinated:document.getElementById('fg2').value,newcastle_vaccinated:document.getElementById('fn').value,ventilation:'medium',bird_type:'broiler'};let res=null,demo=false;try{const fd=new FormData();fd.append('audio',audF);fd.append('symptoms_json',JSON.stringify(sy));fd.append('farm_profile_json',JSON.stringify(pr));if(imgF)fd.append('image',imgF);const r=await Promise.race([fetch(`${API}/analyze/full`,{method:'POST',body:fd}),new Promise((_,j)=>setTimeout(j,30000))]);if(r.ok)res=await r.json();}catch(_){}if(!res){demo=true;res=mkD(sy,pr);}showR(res,demo);btn.textContent='Analyze with KokoAlert AI';btn.disabled=false;}
-function mkD(s,p){const d=s.droppings;if(d==='bright_green')return{disease_name:'Newcastle Disease',confidence:'High',confidence_score:.89,urgency:'emergency',has_cure:false,reasons:['Audio classifier: 14/16 windows anomalous (avg P(sick) = 0.87)','Bright green droppings — primary Newcastle indicator','Flock age '+p.flock_age_weeks+' weeks — fully susceptible','Seasonal risk elevated for current month','Newcastle vaccination: '+p.newcastle_vaccinated+' — protection may be incomplete'],drug:'No cure — supportive care only',instruction:'Electrolytes + Vitamin C in water. Stop selling birds. Bury all dead birds immediately. Contact VSD Ashanti: 0322-024567.',contact_vsd:true};if(d==='bloody_chocolate')return{disease_name:'Coccidiosis',confidence:'High',confidence_score:.84,urgency:'urgent',has_cure:true,reasons:['Audio classifier: 10/16 windows anomalous (avg P(sick) = 0.73)','Bloody/chocolate droppings — primary Coccidiosis indicator','Flock age '+p.flock_age_weeks+' weeks — high-risk age bracket','No coccidiosis medication currently given',(p.flock_age_weeks>=3&&p.flock_age_weeks<=6)?'⚠️ Gumboro window active — treat Coccidiosis NOW to protect immune system':'Treatable if caught early — act today'],drug:'Amprolium (Amprocox) or Sulphachlopyrazine (ESB3)',instruction:'Mix in drinking water for 3–5 days. Add Vitamin K.',contact_vsd:false};if(d==='white_watery'&&p.flock_age_weeks>=3&&p.flock_age_weeks<=6)return{disease_name:'Gumboro Disease (IBD)',confidence:'High',confidence_score:.91,urgency:'emergency',has_cure:false,reasons:['Flock age '+p.flock_age_weeks+' weeks — inside Gumboro danger window (weeks 3–6)','White, watery droppings — key Gumboro indicator','Gumboro vaccination: '+p.gumboro_vaccinated,'Audio anomaly across multiple windows','Gumboro destroys immune system — secondary infections follow'],drug:'No cure — supportive care only',instruction:'Electrolytes + multivitamins urgently. Keep house warm and dry. Isolate weak birds.',contact_vsd:false};return{disease_name:'Chronic Respiratory Disease (CRD)',confidence:'Medium',confidence_score:.71,urgency:'urgent',has_cure:true,reasons:['Audio classifier: 9/16 windows anomalous (avg P(sick) = 0.74)',s.behavior.includes('coughing')?'Coughing reported — primary CRD indicator':'Respiratory anomaly detected in audio signal','Ventilation conditions favour CRD spread','CRD weakens respiratory tract — opens door to Newcastle'],drug:'Tylosin 50 (Tylan Soluble) or Doxycycline',instruction:'Mix in drinking water for 5 days. Tylosin at 0.5g per litre.',contact_vsd:false};}
-function showR(r,demo){document.getElementById('rph').style.display='none';document.getElementById('dr').style.display='block';document.getElementById('dnt').style.display=demo?'block':'none';document.getElementById('rdis').textContent=r.disease_name||'Unknown';document.getElementById('rsub').textContent=(r.confidence||'Medium')+' confidence · '+(r.has_cure?'Treatable':'⚠ No cure — supportive care only');const ub=document.getElementById('rubadge');const uc={emergency:['var(--rbg)','var(--red)','rgba(248,113,113,.3)'],urgent:['var(--abg)','var(--amber)','rgba(251,191,36,.3)'],monitor:['var(--gbg)','var(--green)','rgba(74,222,128,.3)']};const[bg,fg,bd]=uc[r.urgency]||uc.monitor;ub.textContent=r.urgency.toUpperCase();ub.style.background=bg;ub.style.color=fg;ub.style.border=`1px solid ${bd}`;const sc=r.confidence_score||.75;const sp=Math.round(sc*100);const cf=document.getElementById('rcf');cf.style.width=sp+'%';cf.style.background=sc>=.85?'#22c55e':sc>=.65?'#fbbf24':'#f87171';document.getElementById('rcp').textContent=sp+'%';const sigs=[{l:'👂 Audio CNN',c:'blue'},{l:'📋 Symptoms',c:'blue'},{l:'🗓️ Flock Age',c:'blue'},{l:'📅 Season',c:'blue'}];if(r.image_result?.image_provided)sigs.push({l:'👁️ Image CNN',c:'green'});document.getElementById('rsigs').innerHTML=sigs.map(s=>`<span class="sp" style="background:var(--${s.c==='blue'?'b':'g'}bg);color:var(--${s.c});border:1px solid rgba(${s.c==='blue'?'96,165,250':'74,222,128'},.2)">${s.l}</span>`).join('');document.getElementById('rreas').innerHTML=(r.reasons||[]).map(x=>`<li>${x}</li>`).join('');const db=document.getElementById('rdb');const tr=r.has_cure;db.style.background=tr?'rgba(74,222,128,.07)':'rgba(248,113,113,.07)';db.style.border=`1px solid ${tr?'rgba(74,222,128,.2)':'rgba(248,113,113,.2)'}`;document.getElementById('rdlbl').style.color=tr?'var(--green)':'var(--red)';document.getElementById('rdrug').style.color=tr?'var(--green)':'var(--red)';document.getElementById('rinst').style.color=tr?'rgba(74,222,128,.7)':'rgba(248,113,113,.7)';document.getElementById('rdrug').textContent=r.drug||'—';document.getElementById('rinst').textContent=r.instruction||'';if(r.contact_vsd){const ex=document.createElement('div');ex.style.cssText='margin-top:10px;padding-top:10px;border-top:1px solid rgba(248,113,113,.2)';ex.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--red);letter-spacing:.05em">NOTIFY VSD — NOTIFIABLE DISEASE</div><div style="font-size:12px;color:var(--red);margin-top:3px;opacity:.8">VSD Ashanti Regional Office: 0322-024567</div>';db.appendChild(ex);}}
-function cnt(id,tg,comma=false){const el=document.getElementById(id);let n=0;const st=Math.ceil(tg/40);const t=setInterval(()=>{n=Math.min(n+st,tg);el.textContent=comma?n.toLocaleString():n;if(n>=tg)clearInterval(t);},25);}
+
+function showApiErr(msg){
+  const el=document.getElementById('apierr');
+  document.getElementById('apierr-msg').textContent=msg;
+  el.classList.add('show');
+}
+
+function hideApiErr(){
+  document.getElementById('apierr').classList.remove('show');
+}
+
+async function diagnose(){
+  const btn=document.getElementById('abtn');
+  btn.disabled=true;
+  btn.textContent='Analyzing…';
+  hideApiErr();
+
+  const bh=[...document.querySelectorAll('.cg input:checked')].map(c=>c.value);
+  const sy={
+    droppings:document.getElementById('fd').value,
+    behavior:bh,
+    cocci_medicine_given:false,
+    flock_age_weeks:parseInt(document.getElementById('fa').value)
+  };
+  const pr={
+    region:document.getElementById('fr').value,
+    flock_age_weeks:parseInt(document.getElementById('fa').value),
+    gumboro_vaccinated:document.getElementById('fg2').value,
+    newcastle_vaccinated:document.getElementById('fn').value,
+    ventilation:'medium',
+    bird_type:'broiler'
+  };
+
+  let res=null,demo=false;
+
+  try{
+    const fd=new FormData();
+    fd.append('audio',audF);
+    fd.append('symptoms_json',JSON.stringify(sy));
+    fd.append('farm_profile_json',JSON.stringify(pr));
+    if(imgF)fd.append('image',imgF);
+
+    const r=await Promise.race([
+      fetch(`${API}/analyze/full`,{method:'POST',body:fd}),
+      new Promise((_,j)=>setTimeout(()=>j(new Error('Timeout after 60s — Render may be waking up, try again in 30s')),60000))
+    ]);
+
+    if(r.ok){
+      res=await r.json();
+      console.log('Diagnosis API response:', res);
+    } else {
+      const txt=await r.text();
+      const msg=`API returned ${r.status}. Body: ${txt.slice(0,200)}`;
+      console.error('Diagnosis API error:', msg);
+      showApiErr(msg);
+    }
+  }catch(e){
+    console.error('Diagnosis API fetch failed:', e);
+    showApiErr(e.message||'Network error — is the Render service awake? Check console (F12).');
+  }
+
+  if(!res){
+    demo=true;
+    res=mkD(sy,pr);
+  }
+
+  showR(res,demo);
+  btn.textContent='Analyze with KokoAlert AI';
+  btn.disabled=false;
+}
+
+function mkD(s,p){
+  const d=s.droppings;
+  if(d==='bright_green')return{disease_name:'Newcastle Disease',confidence:'High',confidence_score:.89,urgency:'emergency',has_cure:false,reasons:['Audio classifier: 14/16 windows anomalous (avg P(sick) = 0.87)','Bright green droppings — primary Newcastle indicator','Flock age '+p.flock_age_weeks+' weeks — fully susceptible','Seasonal risk elevated for current month','Newcastle vaccination: '+p.newcastle_vaccinated+' — protection may be incomplete'],drug:'No cure — supportive care only',instruction:'Electrolytes + Vitamin C in water. Stop selling birds. Bury all dead birds immediately. Contact VSD Ashanti: 0322-024567.',contact_vsd:true};
+  if(d==='bloody_chocolate')return{disease_name:'Coccidiosis',confidence:'High',confidence_score:.84,urgency:'urgent',has_cure:true,reasons:['Audio classifier: 10/16 windows anomalous (avg P(sick) = 0.73)','Bloody/chocolate droppings — primary Coccidiosis indicator','Flock age '+p.flock_age_weeks+' weeks — high-risk age bracket','No coccidiosis medication currently given',(p.flock_age_weeks>=3&&p.flock_age_weeks<=6)?'⚠️ Gumboro window active — treat Coccidiosis NOW to protect immune system':'Treatable if caught early — act today'],drug:'Amprolium (Amprocox) or Sulphachlopyrazine (ESB3)',instruction:'Mix in drinking water for 3–5 days. Add Vitamin K.',contact_vsd:false};
+  if(d==='white_watery'&&p.flock_age_weeks>=3&&p.flock_age_weeks<=6)return{disease_name:'Gumboro Disease (IBD)',confidence:'High',confidence_score:.91,urgency:'emergency',has_cure:false,reasons:['Flock age '+p.flock_age_weeks+' weeks — inside Gumboro danger window (weeks 3–6)','White, watery droppings — key Gumboro indicator','Gumboro vaccination: '+p.gumboro_vaccinated,'Audio anomaly across multiple windows','Gumboro destroys immune system — secondary infections follow'],drug:'No cure — supportive care only',instruction:'Electrolytes + multivitamins urgently. Keep house warm and dry. Isolate weak birds.',contact_vsd:false};
+  return{disease_name:'Chronic Respiratory Disease (CRD)',confidence:'Medium',confidence_score:.71,urgency:'urgent',has_cure:true,reasons:['Audio classifier: 9/16 windows anomalous (avg P(sick) = 0.74)',s.behavior.includes('coughing')?'Coughing reported — primary CRD indicator':'Respiratory anomaly detected in audio signal','Ventilation conditions favour CRD spread','CRD weakens respiratory tract — opens door to Newcastle'],drug:'Tylosin 50 (Tylan Soluble) or Doxycycline',instruction:'Mix in drinking water for 5 days. Tylosin at 0.5g per litre.',contact_vsd:false};
+}
+
+function showR(r,demo){
+  document.getElementById('rph').style.display='none';
+  document.getElementById('dr').style.display='block';
+  document.getElementById('dnt').style.display=demo?'block':'none';
+  document.getElementById('rdis').textContent=r.disease_name||'Unknown';
+  document.getElementById('rsub').textContent=(r.confidence||'Medium')+' confidence · '+(r.has_cure?'Treatable':'⚠ No cure — supportive care only');
+  const ub=document.getElementById('rubadge');
+  const uc={emergency:['var(--rbg)','var(--red)','rgba(248,113,113,.3)'],urgent:['var(--abg)','var(--amber)','rgba(251,191,36,.3)'],monitor:['var(--gbg)','var(--green)','rgba(74,222,128,.3)']};
+  const[bg,fg,bd]=uc[r.urgency]||uc.monitor;
+  ub.textContent=r.urgency.toUpperCase();
+  ub.style.background=bg;
+  ub.style.color=fg;
+  ub.style.border=`1px solid ${bd}`;
+  const sc=r.confidence_score||.75;
+  const sp=Math.round(sc*100);
+  const cf=document.getElementById('rcf');
+  cf.style.width=sp+'%';
+  cf.style.background=sc>=.85?'#22c55e':sc>=.65?'#fbbf24':'#f87171';
+  document.getElementById('rcp').textContent=sp+'%';
+  const sigs=[{l:'👂 Audio CNN',c:'blue'},{l:'📋 Symptoms',c:'blue'},{l:'🗓️ Flock Age',c:'blue'},{l:'📅 Season',c:'blue'}];
+  if(r.image_result?.image_provided)sigs.push({l:'👁️ Image CNN',c:'green'});
+  document.getElementById('rsigs').innerHTML=sigs.map(s=>`<span class="sp" style="background:var(--${s.c==='blue'?'b':'g'}bg);color:var(--${s.c});border:1px solid rgba(${s.c==='blue'?'96,165,250':'74,222,128'},.2)">${s.l}</span>`).join('');
+  document.getElementById('rreas').innerHTML=(r.reasons||[]).map(x=>`<li>${x}</li>`).join('');
+  const db=document.getElementById('rdb');
+  const tr=r.has_cure;
+  db.style.background=tr?'rgba(74,222,128,.07)':'rgba(248,113,113,.07)';
+  db.style.border=`1px solid ${tr?'rgba(74,222,128,.2)':'rgba(248,113,113,.2)'}`;
+  document.getElementById('rdlbl').style.color=tr?'var(--green)':'var(--red)';
+  document.getElementById('rdrug').style.color=tr?'var(--green)':'var(--red)';
+  document.getElementById('rinst').style.color=tr?'rgba(74,222,128,.7)':'rgba(248,113,113,.7)';
+  document.getElementById('rdrug').textContent=r.drug||'—';
+  document.getElementById('rinst').textContent=r.instruction||'';
+  if(r.contact_vsd){
+    const ex=document.createElement('div');
+    ex.style.cssText='margin-top:10px;padding-top:10px;border-top:1px solid rgba(248,113,113,.2)';
+    ex.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--red);letter-spacing:.05em">NOTIFY VSD — NOTIFIABLE DISEASE</div><div style="font-size:12px;color:var(--red);margin-top:3px;opacity:.8">VSD Ashanti Regional Office: 0322-024567</div>';
+    db.appendChild(ex);
+  }
+}
+
+function cnt(id,tg,comma=false){
+  const el=document.getElementById(id);
+  let n=0;
+  const st=Math.ceil(tg/40);
+  const t=setInterval(()=>{
+    n=Math.min(n+st,tg);
+    el.textContent=comma?n.toLocaleString():n;
+    if(n>=tg)clearInterval(t);
+  },25);
+}
+
 load();
 </script>
 </body>
