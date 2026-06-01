@@ -33,7 +33,6 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from tensorflow import keras
 from src.image_classifier import load_image_classifier, preprocess_image_from_bytes, predict_droppings
 
 from src.config import MODEL_DIR, CLASSIFIER_THRESHOLD
