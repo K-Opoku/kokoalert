@@ -1,80 +1,76 @@
 import numpy as np
 import json
 import os
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
 from pathlib import Path
 
 from src.config import INPUT_SHAPE, MODEL_DIR
 
 
-# ── ARCHITECTURE ──────────────────────────────────────────────────────────────
+# ── TFLITE RUNTIME IMPORT ─────────────────────────────────────────────────────
+# On Render: tflite-runtime is installed (small, ~3MB, fits in 512MB RAM)
+# Locally:   falls back to tensorflow.lite (full TF install)
 
-def build_classifier() -> keras.Model:
+try:
+    import tflite_runtime.interpreter as tflite
+    _Interpreter = tflite.Interpreter
+except ImportError:
+    import tensorflow as tf
+    _Interpreter = tf.lite.Interpreter
+
+
+# ── ARCHITECTURE + TRAINING (local use only — requires full TensorFlow) ───────
+# These functions are called from training notebooks on your local machine.
+# They are NOT called on Render. Render only calls load_autoencoder()
+# and is_anomalous().
+
+def build_classifier():
+    """
+    Build CNN binary classifier.
+    Requires full TensorFlow — run locally only.
+    """
+    import tensorflow as tf
+    from tensorflow import keras
+    from tensorflow.keras import layers
+
     inputs = keras.Input(shape=INPUT_SHAPE)  # (128, 157, 1)
 
-    # Block 1 — low-level features
-    # padding='valid' — no zero-padding at edges
-    # Forces model to learn from real data only, not edge artifacts
+    # Block 1
     x = layers.Conv2D(32, (3, 3), padding='valid')(inputs)
     x = layers.BatchNormalization()(x)
     x = layers.LeakyReLU(0.2)(x)
     x = layers.MaxPooling2D((2, 2), padding='same')(x)
     x = layers.Dropout(0.2)(x)
-    # Shape: (63, 78, 32)
 
-    # Block 2 — mid-level features
+    # Block 2
     x = layers.Conv2D(64, (3, 3), padding='valid')(x)
     x = layers.BatchNormalization()(x)
     x = layers.LeakyReLU(0.2)(x)
     x = layers.MaxPooling2D((2, 2), padding='same')(x)
     x = layers.Dropout(0.2)(x)
-    # Shape: (31, 38, 64)
 
-    # Block 3 — high-level features
+    # Block 3
     x = layers.Conv2D(128, (3, 3), padding='valid')(x)
     x = layers.BatchNormalization()(x)
     x = layers.LeakyReLU(0.2)(x)
     x = layers.MaxPooling2D((2, 2), padding='same')(x)
     x = layers.Dropout(0.3)(x)
-    # Shape: (15, 18, 128)
 
-    # GlobalAveragePooling2D — handles any spatial size
-    # This is why valid padding works: GAP collapses (15, 18, 128) → (128,)
-    # regardless of exact spatial dimensions
     x = layers.GlobalAveragePooling2D()(x)
-
-    # Classification head — unchanged
     x = layers.Dense(64)(x)
     x = layers.BatchNormalization()(x)
     x = layers.LeakyReLU(0.2)(x)
     x = layers.Dropout(0.4)(x)
-
     outputs = layers.Dense(1, activation='sigmoid')(x)
 
     model = keras.Model(inputs, outputs, name='koko_classifier')
     return model
 
-# ── TRAINING ──────────────────────────────────────────────────────────────────
 
-def compile_classifier(model: keras.Model) -> keras.Model:
-    """
-    Binary cross-entropy loss for binary classification.
+def compile_classifier(model):
+    """Compile classifier. Requires full TensorFlow — run locally only."""
+    import tensorflow as tf
+    from tensorflow import keras
 
-    Why binary cross-entropy and not MSE:
-    MSE penalises distance from the target value equally.
-    Binary cross-entropy penalises confident wrong predictions
-    exponentially — if the model says 0.99 healthy for a sick bird,
-    the loss is enormous. This forces the model to be calibrated,
-    not just directionally correct.
-
-    AUC as a metric — more informative than accuracy for this task.
-    AUC measures the probability that the model ranks a random sick
-    window higher than a random healthy window. 0.5 = random, 1.0 = perfect.
-    It's threshold-independent so it tells you about the underlying
-    separation quality, not just performance at 0.5 cutoff.
-    """
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=1e-3),
         loss='binary_crossentropy',
@@ -87,12 +83,10 @@ def compile_classifier(model: keras.Model) -> keras.Model:
 
 
 def get_training_callbacks() -> list:
-    """
-    Same callback strategy as before.
-    Now monitoring val_auc instead of val_loss —
-    AUC is a better measure of classifier quality than raw loss.
-    mode='max' because higher AUC is better (opposite of loss).
-    """
+    """Training callbacks. Requires full TensorFlow — run locally only."""
+    import tensorflow as tf
+    from tensorflow import keras
+
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     return [
@@ -121,78 +115,111 @@ def get_training_callbacks() -> list:
     ]
 
 
-# ── INFERENCE ─────────────────────────────────────────────────────────────────
-
-def is_anomalous(
-    model: keras.Model,
-    spectrogram: np.ndarray,
-    threshold: float = 0.5
-) -> dict:
-    """
-    Run a single spectrogram window through the classifier.
-
-    Returns probability of being sick. The threshold parameter
-    is kept for API compatibility with pipeline.py but defaults
-    to 0.5 — the natural decision boundary for a sigmoid output.
-
-    The margin field tells you how far from the boundary you are:
-    - margin = +0.4 means P(sick) = 0.9 — high confidence sick
-    - margin = -0.4 means P(sick) = 0.1 — high confidence healthy
-    - margin near 0 means the model is uncertain
-    """
-    spec_batch = np.expand_dims(spectrogram, axis=0)  # (1, 128, 157, 1)
-    probability = float(model.predict(spec_batch, verbose=0)[0][0])
-
-    return {
-        'is_anomalous': probability > threshold,
-        'probability': probability,
-        'reconstruction_error': probability,  # kept for pipeline.py compatibility
-        'threshold': threshold,
-        'margin': probability - threshold
-    }
-
-
-def compute_window_probabilities(
-    model: keras.Model,
-    spectrograms: np.ndarray
-) -> np.ndarray:
-    """
-    Run a batch of spectrograms through the classifier.
-    Returns P(sick) for each window.
-    Used during evaluation and threshold analysis.
-    """
-    probabilities = model.predict(spectrograms, verbose=0).flatten()
-    return probabilities
-
-
-# ── MODEL PERSISTENCE ─────────────────────────────────────────────────────────
-
-def save_classifier(model: keras.Model):
-    """Save classifier. No threshold file needed — default is 0.5."""
+def save_classifier(model):
+    """Save classifier weights. Requires full TensorFlow — run locally only."""
     os.makedirs(MODEL_DIR, exist_ok=True)
     model.save(os.path.join(MODEL_DIR, 'autoencoder.h5'))
 
-    # Save threshold.json for pipeline.py compatibility
     with open(os.path.join(MODEL_DIR, 'threshold.json'), 'w') as f:
         json.dump({'threshold': 0.5, 'percentile': None}, f, indent=2)
 
     print(f"Classifier saved to {MODEL_DIR}/autoencoder.h5")
 
 
-def load_autoencoder() -> tuple[keras.Model, float]:
+# ── INFERENCE (TFLite — runs on Render free tier) ─────────────────────────────
+
+def load_autoencoder() -> tuple:
     """
-    Load classifier at API startup.
-    Named load_autoencoder for pipeline.py compatibility —
-    pipeline.py calls this function by name on startup.
+    Load TFLite classifier at API startup.
+    Named load_autoencoder for pipeline.py compatibility.
+    Returns: (interpreter, threshold)
+
+    Memory usage: ~15MB vs ~400MB for full TensorFlow.
     """
-    model_path = os.path.join(MODEL_DIR, 'autoencoder.h5')
+    tflite_path = os.path.join(MODEL_DIR, 'classifier.tflite')
     threshold_path = os.path.join(MODEL_DIR, 'threshold.json')
 
-    model = keras.models.load_model(model_path)
+    if not os.path.exists(tflite_path):
+        raise FileNotFoundError(
+            f"TFLite model not found at {tflite_path}. "
+            f"Run the conversion script locally to generate classifier.tflite."
+        )
+
+    interpreter = _Interpreter(model_path=tflite_path)
+    interpreter.allocate_tensors()
 
     with open(threshold_path) as f:
         data = json.load(f)
     threshold = data['threshold']
 
     print(f"Classifier loaded — threshold: {threshold}")
-    return model, threshold
+    return interpreter, threshold
+
+
+def is_anomalous(
+    interpreter,
+    spectrogram: np.ndarray,
+    threshold: float = 0.5
+) -> dict:
+    """
+    Run a single spectrogram window through the TFLite classifier.
+
+    Args:
+        interpreter: TFLite Interpreter returned by load_autoencoder()
+        spectrogram: np.ndarray of shape (128, 157, 1)
+        threshold: decision boundary — P(sick) > threshold → anomalous
+
+    Returns:
+        {
+            'is_anomalous': bool,
+            'probability': float,        # P(sick) 0.0–1.0
+            'reconstruction_error': float,  # alias for pipeline compatibility
+            'threshold': float,
+            'margin': float,             # probability - threshold
+        }
+    """
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Add batch dimension and ensure float32
+    spec_batch = np.expand_dims(spectrogram, axis=0).astype(np.float32)  # (1, 128, 157, 1)
+
+    interpreter.set_tensor(input_details[0]['index'], spec_batch)
+    interpreter.invoke()
+
+    probability = float(interpreter.get_tensor(output_details[0]['index'])[0][0])
+
+    return {
+        'is_anomalous': probability > threshold,
+        'probability': probability,
+        'reconstruction_error': probability,  # kept for pipeline.py compatibility
+        'threshold': threshold,
+        'margin': probability - threshold,
+    }
+
+
+def compute_window_probabilities(
+    interpreter,
+    spectrograms: np.ndarray
+) -> np.ndarray:
+    """
+    Run a batch of spectrograms through the TFLite classifier.
+    Returns P(sick) for each window as a 1D array.
+    Used during evaluation and threshold analysis.
+
+    Args:
+        interpreter: TFLite Interpreter returned by load_autoencoder()
+        spectrograms: np.ndarray of shape (N, 128, 157, 1)
+    """
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    probabilities = []
+    for spec in spectrograms:
+        spec_batch = np.expand_dims(spec, axis=0).astype(np.float32)
+        interpreter.set_tensor(input_details[0]['index'], spec_batch)
+        interpreter.invoke()
+        prob = float(interpreter.get_tensor(output_details[0]['index'])[0][0])
+        probabilities.append(prob)
+
+    return np.array(probabilities)
