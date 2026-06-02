@@ -71,7 +71,11 @@ class KokoAlertPipeline:
         print("Loading KokoAlert classifier...")
         self.classifier, self.threshold = load_autoencoder()
         self._loaded = True
-        self.image_classifier = load_image_classifier()   # ← add this
+        try:
+            self.image_classifier = load_image_classifier()
+        except Exception as e:
+            print(f"Image classifier not loaded: {e}")
+            self.image_classifier = None
         print(f"Classifier loaded. Threshold: {self.threshold}")
 
     def analyse_audio(
