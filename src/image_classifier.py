@@ -7,30 +7,26 @@ Classifies poultry droppings photos into 3 classes using MobileNetV2:
   1 = coccidiosis    (bloody or dark chocolate droppings)
   2 = newcastle      (bright green droppings)
 
-This module is self-contained. If you already have these constants in
-config.py, move them there and import instead.
+TensorFlow is imported lazily inside training functions only.
+Inference (preprocess + predict) uses numpy — no TF required on Render.
 """
 
 import io
 import os
-from typing import Union
 
 import numpy as np
-import tensorflow as tf
 from PIL import Image
-from tensorflow.keras import layers, models
 
 # ═══════════════════════════════════════════════════════════════════════════
-# CONSTANTS — move to config.py if you already define them there
+# CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════
 
-IMAGE_SIZE = (224, 224)       # MobileNetV2 input size
+IMAGE_SIZE = (224, 224)
 IMAGE_CLASSES = ["healthy", "coccidiosis", "newcastle"]
-IMAGE_CLASS_WEIGHTS = {0: 1.0, 1: 1.0, 2: 5.5}  # 2=newcastle — heavily upweighted
-IMAGE_CONFIDENCE_THRESHOLD = 0.75  # Below this, image result is advisory only
+IMAGE_CLASS_WEIGHTS = {0: 1.0, 1: 1.0, 2: 5.5}
+IMAGE_CONFIDENCE_THRESHOLD = 0.75
 IMAGE_MODEL_PATH = "models/droppings_classifier.h5"
 
-# Map image class → droppings string for diagnosis engine
 IMAGE_TO_DROPPINGS_MAP = {
     "healthy": "normal",
     "coccidiosis": "bloody_chocolate",
@@ -39,37 +35,31 @@ IMAGE_TO_DROPPINGS_MAP = {
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# MODEL BUILDING
+# MODEL BUILDING (local training only — requires full TensorFlow)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def build_image_classifier() -> tf.keras.Model:
+def build_image_classifier():
     """
     Build the MobileNetV2-based droppings classifier.
+    Requires full TensorFlow — run locally only.
 
     Architecture:
-      base = MobileNetV2(input_shape=(224,224,3), include_top=False, weights='imagenet')
-      base.trainable = False  # freeze during initial training
-      x = GlobalAveragePooling2D()(base.output)
-      x = Dense(128, activation='relu')(x)
-      x = Dropout(0.3)(x)
-      output = Dense(3, activation='softmax')(x)
+      MobileNetV2 (frozen) → GlobalAveragePooling2D → Dense(128) → Dropout(0.3) → Dense(3, softmax)
 
     Training strategy:
       Phase 1: Train only the head (base frozen), 10–15 epochs, lr=1e-3
       Phase 2: Unfreeze top 30 layers of MobileNetV2, train with lr=1e-5
-
-    NOTE: We wrap MobileNetV2 as a sub-model via base(model_input) so that
-    model.layers[1] IS the MobileNetV2 object. This lets the training notebook
-    access base_model.layers[:-30] for Phase 2 fine-tuning.
     """
+    import tensorflow as tf
+    from tensorflow.keras import layers, models
+
     base = tf.keras.applications.MobileNetV2(
         input_shape=(*IMAGE_SIZE, 3),
         include_top=False,
         weights="imagenet",
     )
-    base.trainable = False  # Phase 1: freeze backbone
+    base.trainable = False
 
-    # Wrap as sub-model so notebook can access base_model.layers
     model_input = tf.keras.Input(shape=(*IMAGE_SIZE, 3))
     x = base(model_input, training=False)
     x = layers.GlobalAveragePooling2D()(x)
@@ -81,9 +71,34 @@ def build_image_classifier() -> tf.keras.Model:
     return model
 
 
+def compile_image_classifier(model):
+    """
+    Compile the image classifier with standard settings.
+    Requires full TensorFlow — run locally only.
+    Use class_weight=IMAGE_CLASS_WEIGHTS during fit() for NCD imbalance.
+    """
+    import tensorflow as tf
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
+    )
+    return model
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-# IMAGE PREPROCESSING
+# IMAGE PREPROCESSING (numpy only — no TensorFlow needed)
 # ═══════════════════════════════════════════════════════════════════════════
+
+def _mobilenet_preprocess(img_array: np.ndarray) -> np.ndarray:
+    """
+    MobileNetV2 preprocessing: scale pixel values from [0, 255] to [-1, 1].
+    Equivalent to tf.keras.applications.mobilenet_v2.preprocess_input()
+    but implemented in pure numpy — no TensorFlow import required.
+    """
+    return (img_array.astype(np.float32) / 127.5) - 1.0
+
 
 def preprocess_image(image_path: str) -> np.ndarray:
     """
@@ -96,17 +111,13 @@ def preprocess_image(image_path: str) -> np.ndarray:
     img = Image.open(image_path).convert("RGB")
     img = img.resize(IMAGE_SIZE)
     img_array = np.array(img, dtype=np.float32)
-
-    # MobileNetV2 expects [-1, 1] scaling — NOT simple /255
-    preprocessed = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
-
-    # Add batch dimension
+    preprocessed = _mobilenet_preprocess(img_array)
     return np.expand_dims(preprocessed, axis=0)
 
 
 def preprocess_image_from_bytes(image_bytes: bytes) -> np.ndarray:
     """
-    Same as preprocess_image but accepts raw bytes (e.g. from WhatsApp download).
+    Same as preprocess_image but accepts raw bytes (from WhatsApp download).
 
     Args:
         image_bytes: Raw image bytes (PNG/JPEG/etc.)
@@ -117,8 +128,7 @@ def preprocess_image_from_bytes(image_bytes: bytes) -> np.ndarray:
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     img = img.resize(IMAGE_SIZE)
     img_array = np.array(img, dtype=np.float32)
-
-    preprocessed = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
+    preprocessed = _mobilenet_preprocess(img_array)
     return np.expand_dims(preprocessed, axis=0)
 
 
@@ -126,12 +136,12 @@ def preprocess_image_from_bytes(image_bytes: bytes) -> np.ndarray:
 # INFERENCE
 # ═══════════════════════════════════════════════════════════════════════════
 
-def predict_droppings(model: tf.keras.Model, image: np.ndarray) -> dict:
+def predict_droppings(model, image: np.ndarray) -> dict:
     """
     Run a preprocessed image through the classifier.
 
     Args:
-        model: Trained Keras model (from build_image_classifier or load_image_classifier)
+        model: Trained Keras model (from load_image_classifier)
         image: Preprocessed array of shape (1, 224, 224, 3)
 
     Returns:
@@ -144,6 +154,9 @@ def predict_droppings(model: tf.keras.Model, image: np.ndarray) -> dict:
             "reliable": bool,           # True if confidence >= 0.75
         }
     """
+    if model is None:
+        return {"image_provided": False}
+
     if image.ndim == 3:
         image = np.expand_dims(image, axis=0)
 
@@ -170,44 +183,31 @@ def predict_droppings(model: tf.keras.Model, image: np.ndarray) -> dict:
 # MODEL PERSISTENCE
 # ═══════════════════════════════════════════════════════════════════════════
 
-def load_image_classifier(model_path: str = IMAGE_MODEL_PATH) -> tf.keras.Model:
+def load_image_classifier(model_path: str = IMAGE_MODEL_PATH):
     """
     Load a saved droppings classifier from disk.
     Called once at API startup.
 
-    Returns:
-        Compiled Keras model ready for inference.
+    Returns None if model file doesn't exist — image classification is
+    optional in KokoAlert. The system works without it.
+    Returns the loaded Keras model if the file exists.
     """
     if not os.path.exists(model_path):
-        raise FileNotFoundError(
-            f"Image classifier not found at {model_path}. "
-            f"Train it first using notebooks/05_image_classifier_training.ipynb"
+        print(
+            f"Image classifier not found at {model_path} — "
+            f"image classification disabled. Train it using "
+            f"notebooks/05_image_classifier_training.ipynb"
         )
+        return None
+
+    import tensorflow as tf
     return tf.keras.models.load_model(model_path)
 
 
-def save_image_classifier(model: tf.keras.Model, model_path: str = IMAGE_MODEL_PATH) -> None:
+def save_image_classifier(model, model_path: str = IMAGE_MODEL_PATH) -> None:
     """
     Save a trained droppings classifier to disk.
-    Creates the models/ directory if it doesn't exist.
+    Requires full TensorFlow — run locally only.
     """
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     model.save(model_path)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# OPTIONAL: Training helper (if you want to train from a script instead of
-# the notebook). The notebook is the primary training path.
-# ═══════════════════════════════════════════════════════════════════════════
-
-def compile_image_classifier(model: tf.keras.Model) -> tf.keras.Model:
-    """
-    Compile the image classifier with standard settings.
-    Use class_weight=IMAGE_CLASS_WEIGHTS during fit() for NCD imbalance.
-    """
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-        loss="categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-    return model
