@@ -403,10 +403,7 @@ async function pAud(){
     const fd=new FormData();
     fd.append('audio',audF);
     fd.append('flock_age_weeks',document.getElementById('fa').value);
-    const r=await Promise.race([
-      fetch(`${API}/analyze/audio`,{method:'POST',body:fd}),
-      new Promise((_,j)=>setTimeout(()=>j(new Error('Timeout after 120s — server may still be waking up. Wait 30s and try again.')),120000))
-    ]);
+    const r=await fetch(`${API}/analyze/audio`,{method:'POST',body:fd});
     clearTimeout(warmupTimer);
     if(r.ok){
       const d=await r.json();
@@ -547,10 +544,7 @@ async function diagnose(){
     fd.append('farm_profile_json',JSON.stringify(pr));
     if(imgF)fd.append('image',imgF);
 
-    const r=await Promise.race([
-      fetch(`${API}/analyze/full`,{method:'POST',body:fd}),
-      new Promise((_,j)=>setTimeout(()=>j(new Error('Timeout after 120s — server may still be waking up. Wait 30s and try again.')),120000))
-    ]);
+    const r=await fetch(`${API}/analyze/full`,{method:'POST',body:fd});
     clearTimeout(warmupTimer2);
 
     if(r.ok){
