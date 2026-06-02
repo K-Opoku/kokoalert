@@ -128,6 +128,11 @@ def save_classifier(model):
 
 # ── INFERENCE (TFLite — runs on Render free tier) ─────────────────────────────
 
+# Normalization params loaded once at startup
+_NORM_MIN = -80.0
+_NORM_MAX = 1.9073486328125e-06
+
+
 def load_autoencoder() -> tuple:
     """
     Load TFLite classifier at API startup.
@@ -136,8 +141,11 @@ def load_autoencoder() -> tuple:
 
     Memory usage: ~15MB vs ~400MB for full TensorFlow.
     """
+    global _NORM_MIN, _NORM_MAX
+
     tflite_path = os.path.join(MODEL_DIR, 'classifier.tflite')
     threshold_path = os.path.join(MODEL_DIR, 'threshold.json')
+    norm_path = os.path.join(MODEL_DIR, 'normalization_params.json')
 
     if not os.path.exists(tflite_path):
         raise FileNotFoundError(
@@ -151,6 +159,14 @@ def load_autoencoder() -> tuple:
     with open(threshold_path) as f:
         data = json.load(f)
     threshold = data['threshold']
+
+    # Load normalization params if available
+    if os.path.exists(norm_path):
+        with open(norm_path) as f:
+            norm = json.load(f)
+        _NORM_MIN = norm['min']
+        _NORM_MAX = norm['max']
+        print(f"Normalization loaded — min: {_NORM_MIN}, max: {_NORM_MAX}")
 
     print(f"Classifier loaded — threshold: {threshold}")
     return interpreter, threshold
@@ -180,6 +196,15 @@ def is_anomalous(
     """
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
+
+    # Min-max normalise to [0, 1] — must match training preprocessing.
+    # Model was trained on spectrograms normalised with normalization_params.json:
+    #   min = -80.0 dB, max = 0.0 dB (standard log-mel range)
+    # Without this, the model sees out-of-distribution inputs and outputs ~0.
+    SPEC_MIN = -80.0
+    SPEC_MAX = 0.0
+    spectrogram = (spectrogram - SPEC_MIN) / (SPEC_MAX - SPEC_MIN + 1e-8)
+    spectrogram = np.clip(spectrogram, 0.0, 1.0)
 
     # Add batch dimension and ensure float32
     spec_batch = np.expand_dims(spectrogram, axis=0).astype(np.float32)  # (1, 128, 157, 1)
@@ -214,8 +239,12 @@ def compute_window_probabilities(
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
+    SPEC_MIN = -80.0
+    SPEC_MAX = 0.0
     probabilities = []
     for spec in spectrograms:
+        spec = (spec - SPEC_MIN) / (SPEC_MAX - SPEC_MIN + 1e-8)
+        spec = np.clip(spec, 0.0, 1.0)
         spec_batch = np.expand_dims(spec, axis=0).astype(np.float32)
         interpreter.set_tensor(input_details[0]['index'], spec_batch)
         interpreter.invoke()
