@@ -11,7 +11,7 @@
 
 ## What is KokoAlert?
 
-KokoAlert is a WhatsApp-based AI system that helps Ghanaian poultry farmers detect respiratory diseases early, follow vaccination schedules, and understand their seasonal disease risk — before losses occur.
+KokoAlert is a WhatsApp-based AI system that helps Ghanaian poultry farmers detect respiratory diseases early, follow vaccination schedules, and understand their seasonal disease risk, before losses occur.
 
 Farmers send a voice note from inside their poultry house. KokoAlert analyses the audio, asks follow-up questions, and sends back a confirmed disease flag with the exact drug name to ask for at the agrovet. No app installation. No technical knowledge required. Just WhatsApp.
 
@@ -336,15 +336,12 @@ Farmers interact entirely through numbered menus. No typing required beyond sing
 ## Team
 
 **Kofi Konadu Opoku** — ML Engineering & System Architecture, KNUST  
-**Raphael Wilson Ampoh** — Research & Creative Production, University of Ghana
-**Nana Yaw Krakue**- Research & Pitch strategist, KNUST
 
-*Submitted to the Ghana AI Innovation Challenge 2026*  
-*Ghana AI Summit, July 29–30, 2026, Accra*
+
 
 ---
 
-*KokoAlert v4.0 | Ear + Eye + Brain + Agent*  
+*KokoAlert  | Ear + Eye + Brain + Agent*  
 *Covers: Newcastle · Gumboro · Coccidiosis · CRD · Fowl Pox*  
-*Built for Ghana's smallholder poultry farmers 🇬🇭*
+
 
